@@ -52,9 +52,11 @@ Route::post('/recipes/{recipe}/prepare', [RecipeController::class, 'prepare']);
 Route::apiResource('recipes', RecipeController::class);
 
 // Routes spéciales pour les alertes (AVANT apiResource pour éviter les conflits)
-Route::get('/alerts/unread', [AlertController::class, 'unread']);
-Route::post('/alerts/{alert}/read', [AlertController::class, 'markAsRead']);
-Route::apiResource('alerts', AlertController::class);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/alerts/unread', [AlertController::class, 'unread']);
+    Route::post('/alerts/{alert}/read', [AlertController::class, 'markAsRead']);
+    Route::apiResource('alerts', AlertController::class);
+});
 
 // Routes pour le Dashboard (protégées)
 Route::middleware('auth:sanctum')->group(function () {
