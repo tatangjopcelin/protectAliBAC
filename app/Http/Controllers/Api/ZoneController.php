@@ -12,7 +12,8 @@ class ZoneController extends Controller
      */
     public function index()
     {
-        //
+        $zones = \App\Models\Zone::with('store')->orderBy('name')->get();
+        return response()->json($zones);
     }
 
     /**

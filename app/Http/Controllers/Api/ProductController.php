@@ -54,7 +54,33 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        $this->authorize('create', Product::class);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        // Vérifier les permissions avec la Policy
+        $policy = new \App\Policies\ProductPolicy();
+        if (!$policy->create($user)) {
+            \Log::warning('Tentative de création de produit refusée', [
+                'user_id' => $user->id,
+                'user_role' => $user->role,
+                'user_email' => $user->email
+            ]);
+            return response()->json([
+                'message' => 'Accès refusé',
+                'error' => 'Vous n\'avez pas la permission de créer un produit. Rôles autorisés: Admin, Chef, Directeur, Magasinier, Boucher, Cuisinier',
+                'user_role' => $user->role,
+                'debug' => [
+                    'isAdmin' => $user->isAdmin(),
+                    'isChef' => $user->isChef(),
+                    'isDirector' => $user->isDirector(),
+                    'isStorekeeper' => $user->isStorekeeper(),
+                    'isButcher' => $user->isButcher(),
+                    'isCook' => $user->isCook(),
+                ]
+            ], 403);
+        }
         
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -67,9 +93,34 @@ class ProductController extends Controller
             'reception_date' => 'required|date',
             'expiration_date' => 'required|date|after:reception_date',
             'purchase_price' => 'nullable|numeric|min:0',
-            'photo' => 'nullable|string',
+            'photo' => 'required|string', // Photo obligatoire pour la traçabilité
             'barcode' => 'nullable|string',
             'notes' => 'nullable|string',
+            // Champs de traçabilité (tous nullable - optionnels)
+            'batch_number' => 'nullable|string|max:255',
+            'manufacturing_date' => 'nullable|date',
+            'factory_name' => 'nullable|string|max:255',
+            'factory_address' => 'nullable|string',
+            'factory_contact_person' => 'nullable|string|max:255',
+            'factory_phone' => 'nullable|string|max:50',
+            'factory_email' => 'nullable|email|max:255',
+            'origin_country' => 'nullable|string|max:100',
+            'origin_region' => 'nullable|string|max:255',
+            'certificate_number' => 'nullable|string|max:255',
+            'certificate_type' => 'nullable|string|max:100',
+            'certificate_issue_date' => 'nullable|date',
+            'certificate_expiry_date' => 'nullable|date',
+            'certificate_file_path' => 'nullable|string',
+            'import_document_number' => 'nullable|string|max:255',
+            'import_date' => 'nullable|date',
+            'customs_declaration_number' => 'nullable|string|max:255',
+            'transport_method' => 'nullable|string|max:50',
+            'transport_company' => 'nullable|string|max:255',
+            'transport_document_number' => 'nullable|string|max:255',
+            'storage_temperature' => 'nullable|string|max:50',
+            'storage_conditions' => 'nullable|string',
+            'serial_number' => 'nullable|string|max:255',
+            'supplier_reception_date' => 'nullable|date',
         ]);
 
         // Générer un code-barres automatiquement si non fourni
@@ -91,11 +142,43 @@ class ProductController extends Controller
         $product->updateStatus();
         $this->alertService->checkProduct($product);
 
-        // Enregistrer la création dans la traçabilité
-        $this->recordTrace($product->id, 'created', $request->user()?->id, [
+        // Enregistrer la création dans la traçabilité avec toutes les informations d'origine
+        $traceMetadata = [
             'barcode' => $product->barcode,
-            'name' => $product->name
-        ]);
+            'name' => $product->name,
+            // Informations de traçabilité complète
+            'batch_number' => $product->batch_number,
+            'manufacturing_date' => $product->manufacturing_date ? (is_string($product->manufacturing_date) ? $product->manufacturing_date : $product->manufacturing_date->format('Y-m-d')) : null,
+            'factory_name' => $product->factory_name,
+            'factory_address' => $product->factory_address,
+            'factory_contact_person' => $product->factory_contact_person,
+            'factory_phone' => $product->factory_phone,
+            'factory_email' => $product->factory_email,
+            'origin_country' => $product->origin_country,
+            'origin_region' => $product->origin_region,
+            'certificate_number' => $product->certificate_number,
+            'certificate_type' => $product->certificate_type,
+            'certificate_issue_date' => $product->certificate_issue_date ? (is_string($product->certificate_issue_date) ? $product->certificate_issue_date : $product->certificate_issue_date->format('Y-m-d')) : null,
+            'certificate_expiry_date' => $product->certificate_expiry_date ? (is_string($product->certificate_expiry_date) ? $product->certificate_expiry_date : $product->certificate_expiry_date->format('Y-m-d')) : null,
+            'import_document_number' => $product->import_document_number,
+            'import_date' => $product->import_date ? (is_string($product->import_date) ? $product->import_date : $product->import_date->format('Y-m-d')) : null,
+            'customs_declaration_number' => $product->customs_declaration_number,
+            'transport_method' => $product->transport_method,
+            'transport_company' => $product->transport_company,
+            'transport_document_number' => $product->transport_document_number,
+            'storage_temperature' => $product->storage_temperature,
+            'storage_conditions' => $product->storage_conditions,
+            'serial_number' => $product->serial_number,
+            'supplier_reception_date' => $product->supplier_reception_date ? (is_string($product->supplier_reception_date) ? $product->supplier_reception_date : $product->supplier_reception_date->format('Y-m-d')) : null,
+            // Informations du fournisseur
+            'supplier_id' => $product->supplier_id,
+            'supplier_name' => $product->supplier?->name,
+            'supplier_contact' => $product->supplier?->contact_name,
+            'supplier_email' => $product->supplier?->email,
+            'supplier_phone' => $product->supplier?->phone,
+            'supplier_address' => $product->supplier?->address,
+        ];
+        $this->recordTrace($product->id, 'created', $request->user()?->id, $traceMetadata);
 
         // Notifier tous les utilisateurs de l'ajout du produit
         if ($request->user()) {
@@ -130,8 +213,17 @@ class ProductController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
         $product = Product::findOrFail($id);
-        $this->authorize('update', $product);
+        
+        // Vérifier les permissions avec la Policy
+        if (!(new \App\Policies\ProductPolicy())->update($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -144,9 +236,34 @@ class ProductController extends Controller
             'reception_date' => 'sometimes|date',
             'expiration_date' => 'sometimes|date',
             'purchase_price' => 'nullable|numeric|min:0',
-            'photo' => 'nullable|string',
+            'photo' => 'sometimes|string', // Photo optionnelle lors de la mise à jour (peut être omise)
             'barcode' => 'nullable|string',
             'notes' => 'nullable|string',
+            // Champs de traçabilité (tous nullable - optionnels)
+            'batch_number' => 'nullable|string|max:255',
+            'manufacturing_date' => 'nullable|date',
+            'factory_name' => 'nullable|string|max:255',
+            'factory_address' => 'nullable|string',
+            'factory_contact_person' => 'nullable|string|max:255',
+            'factory_phone' => 'nullable|string|max:50',
+            'factory_email' => 'nullable|email|max:255',
+            'origin_country' => 'nullable|string|max:100',
+            'origin_region' => 'nullable|string|max:255',
+            'certificate_number' => 'nullable|string|max:255',
+            'certificate_type' => 'nullable|string|max:100',
+            'certificate_issue_date' => 'nullable|date',
+            'certificate_expiry_date' => 'nullable|date',
+            'certificate_file_path' => 'nullable|string',
+            'import_document_number' => 'nullable|string|max:255',
+            'import_date' => 'nullable|date',
+            'customs_declaration_number' => 'nullable|string|max:255',
+            'transport_method' => 'nullable|string|max:50',
+            'transport_company' => 'nullable|string|max:255',
+            'transport_document_number' => 'nullable|string|max:255',
+            'storage_temperature' => 'nullable|string|max:50',
+            'storage_conditions' => 'nullable|string',
+            'serial_number' => 'nullable|string|max:255',
+            'supplier_reception_date' => 'nullable|date',
         ]);
 
         $product->update($validated);
@@ -570,8 +687,10 @@ class ProductController extends Controller
         }
 
         // Produit non trouvé - retourner les informations pour création manuelle
+        // Utiliser 200 au lieu de 404 pour éviter que le frontend interprète cela comme une erreur de route
         return response()->json([
             'found' => false,
+            'product' => null,
             'barcode' => $barcode,
             'message' => 'Produit non trouvé. Vous pouvez le créer manuellement.',
             'suggestions' => [
@@ -579,7 +698,7 @@ class ProductController extends Controller
                 'Le produit peut ne pas être encore enregistré',
                 'Vous pouvez créer le produit manuellement avec ce code-barres'
             ]
-        ], 404);
+        ], 200);
     }
 
     /**

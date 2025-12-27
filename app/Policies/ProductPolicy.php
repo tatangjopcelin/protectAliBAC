@@ -30,8 +30,9 @@ class ProductPolicy
      */
     public function create(User $user): bool
     {
-        // Admin, Chef, Directeur, Magasinier peuvent créer des produits
-        return $user->isAdmin() || $user->isChef() || $user->isDirector() || $user->isStorekeeper();
+        // Tous les rôles authentifiés peuvent créer des produits (fonctionnalité de base)
+        // Admin, Chef, Directeur, Magasinier, Boucher, Cuisinier peuvent créer des produits
+        return $user->isAdmin() || $user->isChef() || $user->isDirector() || $user->isStorekeeper() || $user->isButcher() || $user->isCook();
     }
 
     /**

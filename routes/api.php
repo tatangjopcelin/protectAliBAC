@@ -33,17 +33,19 @@ Route::apiResource('categories', CategoryController::class);
 Route::apiResource('suppliers', SupplierController::class);
 
 // Routes spéciales pour les produits (AVANT apiResource pour éviter les conflits)
-Route::get('/products/expiring/{days}', [ProductController::class, 'expiring']);
-Route::get('/products/expired', [ProductController::class, 'expired']);
-Route::get('/products/low-stock', [ProductController::class, 'lowStock']);
-Route::get('/products/fifo/{productId?}', [ProductController::class, 'fifo']);
-Route::post('/products/scan', [ProductController::class, 'scan']); // Scanner un produit
-Route::get('/products/search/barcode', [ProductController::class, 'searchByBarcode']); // Recherche par code-barres
-Route::post('/products/handle-expired', [ProductController::class, 'handleExpiredProducts']); // Gérer tous les produits périmés
-Route::get('/products/{id}/trace-history', [ProductController::class, 'traceHistory']); // Historique de traçabilité
-Route::post('/products/{id}/add-stock', [ProductController::class, 'addStock']); // Ajouter du stock à un produit
-Route::post('/products/{id}/mark-expired', [ProductController::class, 'markAsExpired']); // Marquer un produit comme périmé
-Route::apiResource('products', ProductController::class);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/products/expiring/{days}', [ProductController::class, 'expiring']);
+    Route::get('/products/expired', [ProductController::class, 'expired']);
+    Route::get('/products/low-stock', [ProductController::class, 'lowStock']);
+    Route::get('/products/fifo/{productId?}', [ProductController::class, 'fifo']);
+    Route::post('/products/scan', [ProductController::class, 'scan']); // Scanner un produit
+    Route::get('/products/search/barcode', [ProductController::class, 'searchByBarcode']); // Recherche par code-barres
+    Route::post('/products/handle-expired', [ProductController::class, 'handleExpiredProducts']); // Gérer tous les produits périmés
+    Route::get('/products/{id}/trace-history', [ProductController::class, 'traceHistory']); // Historique de traçabilité
+    Route::post('/products/{id}/add-stock', [ProductController::class, 'addStock']); // Ajouter du stock à un produit
+    Route::post('/products/{id}/mark-expired', [ProductController::class, 'markAsExpired']); // Marquer un produit comme périmé
+    Route::apiResource('products', ProductController::class);
+});
 
 Route::apiResource('stock-movements', StockMovementController::class);
 

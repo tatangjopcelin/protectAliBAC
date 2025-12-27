@@ -12,7 +12,8 @@ class CategoryController extends Controller
      */
     public function index()
     {
-        //
+        $categories = \App\Models\Category::orderBy('name')->get();
+        return response()->json($categories);
     }
 
     /**

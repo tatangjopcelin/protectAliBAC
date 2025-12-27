@@ -12,7 +12,8 @@ class SupplierController extends Controller
      */
     public function index()
     {
-        //
+        $suppliers = \App\Models\Supplier::orderBy('name')->get();
+        return response()->json($suppliers);
     }
 
     /**
