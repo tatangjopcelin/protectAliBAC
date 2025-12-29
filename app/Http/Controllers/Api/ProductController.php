@@ -379,10 +379,11 @@ class ProductController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
         
-        if (!$product->isExpired()) {
+        // Vérifier si le produit est déjà marqué comme périmé
+        if ($product->status === 'expired') {
             return response()->json([
-                'error' => 'Ce produit n\'est pas encore périmé'
-            ], 400);
+                'message' => 'Ce produit est déjà marqué comme périmé'
+            ], 200);
         }
 
         if ($product->quantity <= 0) {
