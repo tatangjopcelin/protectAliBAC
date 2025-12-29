@@ -94,4 +94,68 @@ class AIController extends Controller
 
         return response()->json($suggestion);
     }
+
+    /**
+     * Test de connexion à l'API Cohere
+     */
+    public function testConnection(Request $request)
+    {
+        try {
+            $aiService = app(\App\Services\CohereService::class);
+            
+            if (!$aiService->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'COHERE_API_KEY n\'est pas configurée dans le fichier .env',
+                    'configured' => false,
+                    'hint' => 'Ajoutez COHERE_API_KEY=votre-cle dans le fichier .env. Obtenez une clé gratuite sur https://cohere.com/'
+                ], 400);
+            }
+
+            // Test simple avec une question basique
+            $testPrompt = "Réponds simplement 'OK' si tu reçois ce message.";
+            
+            $response = $aiService->chat([
+                [
+                    'role' => 'user',
+                    'content' => $testPrompt
+                ]
+            ], 'command', 0.7);
+
+            $content = $response->choices[0]->message->content ?? '';
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Connexion à Cohere réussie !',
+                'configured' => true,
+                'test_response' => $content,
+                'model' => 'command',
+                'timestamp' => now()->toDateTimeString()
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Erreur test connexion Cohere: ' . $e->getMessage());
+            
+            $errorMessage = $e->getMessage();
+            $hint = 'Vérifiez votre clé API Cohere dans le fichier .env';
+            
+            // Détecter les erreurs spécifiques
+            if (str_contains($errorMessage, 'API key') || str_contains($errorMessage, '401') || str_contains($errorMessage, '403')) {
+                $hint = 'Votre clé API Cohere est invalide. Obtenez une nouvelle clé gratuite sur https://cohere.com/';
+            } elseif (str_contains($errorMessage, 'Connection')) {
+                $hint = 'Problème de connexion. Vérifiez votre connexion internet.';
+            } elseif (str_contains($errorMessage, 'rate limit') || str_contains($errorMessage, '429')) {
+                $hint = 'Limite de requêtes atteinte. Attendez quelques instants.';
+            }
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la connexion à Cohere',
+                'error' => $errorMessage,
+                'configured' => $aiService->isConfigured() ?? false,
+                'hint' => $hint,
+                'help_url' => 'https://cohere.com/'
+            ], 500);
+        }
+    }
 }

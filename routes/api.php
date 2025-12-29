@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\NotificationPreferenceController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ShoppingListController;
+use App\Http\Controllers\Api\ShoppingListItemController;
 use App\Http\Controllers\Api\AuthController;
 
 // Routes d'authentification (publiques)
@@ -28,9 +29,14 @@ Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum')
 
 // Routes publiques (peut être sécurisées plus tard)
 Route::apiResource('stores', StoreController::class);
-Route::apiResource('zones', ZoneController::class);
 Route::apiResource('categories', CategoryController::class);
 Route::apiResource('suppliers', SupplierController::class);
+
+// Routes pour les zones (protégées - seul l'admin peut créer/modifier)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/zones/{id}/update-temperature', [ZoneController::class, 'updateTemperature']); // Mettre à jour la température d'une zone
+    Route::apiResource('zones', ZoneController::class);
+});
 
 // Routes spéciales pour les produits (AVANT apiResource pour éviter les conflits)
 Route::middleware('auth:sanctum')->group(function () {
@@ -43,6 +49,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/handle-expired', [ProductController::class, 'handleExpiredProducts']); // Gérer tous les produits périmés
     Route::get('/products/{id}/trace-history', [ProductController::class, 'traceHistory']); // Historique de traçabilité
     Route::post('/products/{id}/add-stock', [ProductController::class, 'addStock']); // Ajouter du stock à un produit
+    Route::post('/products/{id}/reduce-stock', [ProductController::class, 'reduceStock']); // Réduire le stock d'un produit
     Route::post('/products/{id}/mark-expired', [ProductController::class, 'markAsExpired']); // Marquer un produit comme périmé
     Route::apiResource('products', ProductController::class);
 });
@@ -70,14 +77,17 @@ Route::apiResource('orders', OrderController::class);
 Route::post('/orders/generate', [OrderController::class, 'generate']); // Générer une commande automatique
 Route::get('/products/{productId}/compare-prices', [OrderController::class, 'comparePrices']); // Comparer les prix fournisseurs
 
-// Routes pour l'IA & Recommandations
-Route::get('/ai/suggest-recipes', [AIController::class, 'suggestRecipes']); // Suggestions de recettes
-Route::get('/ai/predict-consumption/{productId}', [AIController::class, 'predictConsumption']); // Prédiction de consommation
-Route::get('/ai/suggest-orders', [AIController::class, 'suggestOrders']); // Suggestions de commandes
-Route::get('/ai/detect-anomalies', [AIController::class, 'detectAnomalies']); // Détection d'anomalies
-Route::get('/ai/waste-reduction', [AIController::class, 'wasteReductionSuggestions']); // Suggestions de réduction de gaspillage
-Route::get('/ai/suggestions', [AIController::class, 'index']); // Liste des suggestions
-Route::put('/ai/suggestions/{id}/status', [AIController::class, 'updateStatus']); // Mettre à jour le statut d'une suggestion
+// Routes pour l'IA & Recommandations (tous les utilisateurs authentifiés)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/ai/test-connection', [AIController::class, 'testConnection']); // Test de connexion Hugging Face
+    Route::get('/ai/suggest-recipes', [AIController::class, 'suggestRecipes']); // Suggestions de recettes
+    Route::get('/ai/predict-consumption/{productId}', [AIController::class, 'predictConsumption']); // Prédiction de consommation
+    Route::get('/ai/suggest-orders', [AIController::class, 'suggestOrders']); // Suggestions de commandes
+    Route::get('/ai/detect-anomalies', [AIController::class, 'detectAnomalies']); // Détection d'anomalies
+    Route::get('/ai/waste-reduction', [AIController::class, 'wasteReductionSuggestions']); // Suggestions de réduction de gaspillage
+    Route::get('/ai/suggestions', [AIController::class, 'index']); // Liste des suggestions
+    Route::put('/ai/suggestions/{id}/status', [AIController::class, 'updateStatus']); // Mettre à jour le statut d'une suggestion
+});
 
 // Routes pour les notifications
 Route::get('/notifications', [NotificationController::class, 'index']);
@@ -113,4 +123,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/shopping-list/{id}/mark-ordered', [ShoppingListController::class, 'markAsOrdered']); // Marquer comme commandé
     Route::post('/shopping-list/{id}/mark-received', [ShoppingListController::class, 'markAsReceived']); // Marquer comme reçu
     Route::post('/shopping-list/{id}/cancel', [ShoppingListController::class, 'cancel']); // Annuler
+    
+    // Routes pour les items de la liste de courses
+    Route::apiResource('shopping-list-items', ShoppingListItemController::class);
+    Route::post('/shopping-list-items/{id}/mark-purchased', [ShoppingListItemController::class, 'markAsPurchased']); // Marquer comme acheté
 });

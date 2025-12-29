@@ -46,7 +46,22 @@ class ProductController extends Controller
             $query->orderBy('created_at', 'desc');
         }
 
-        return response()->json($query->get());
+        $products = $query->get();
+        
+        // Charger le créateur pour chaque produit (première trace "created")
+        foreach ($products as $product) {
+            $firstTrace = \App\Models\ProductTrace::where('product_id', $product->id)
+                ->where('action', 'created')
+                ->with('user')
+                ->orderBy('created_at', 'asc')
+                ->first();
+            
+            if ($firstTrace && $firstTrace->user) {
+                $product->creator = $firstTrace->user;
+            }
+        }
+
+        return response()->json($products);
     }
 
     /**
@@ -96,31 +111,12 @@ class ProductController extends Controller
             'photo' => 'required|string', // Photo obligatoire pour la traçabilité
             'barcode' => 'nullable|string',
             'notes' => 'nullable|string',
-            // Champs de traçabilité (tous nullable - optionnels)
-            'batch_number' => 'nullable|string|max:255',
-            'manufacturing_date' => 'nullable|date',
-            'factory_name' => 'nullable|string|max:255',
-            'factory_address' => 'nullable|string',
-            'factory_contact_person' => 'nullable|string|max:255',
-            'factory_phone' => 'nullable|string|max:50',
-            'factory_email' => 'nullable|email|max:255',
-            'origin_country' => 'nullable|string|max:100',
-            'origin_region' => 'nullable|string|max:255',
-            'certificate_number' => 'nullable|string|max:255',
-            'certificate_type' => 'nullable|string|max:100',
-            'certificate_issue_date' => 'nullable|date',
-            'certificate_expiry_date' => 'nullable|date',
-            'certificate_file_path' => 'nullable|string',
-            'import_document_number' => 'nullable|string|max:255',
-            'import_date' => 'nullable|date',
-            'customs_declaration_number' => 'nullable|string|max:255',
-            'transport_method' => 'nullable|string|max:50',
-            'transport_company' => 'nullable|string|max:255',
-            'transport_document_number' => 'nullable|string|max:255',
-            'storage_temperature' => 'nullable|string|max:50',
-            'storage_conditions' => 'nullable|string',
-            'serial_number' => 'nullable|string|max:255',
-            'supplier_reception_date' => 'nullable|date',
+            // Champs de traçabilité (5 informations essentielles - tous nullable)
+            'batch_number' => 'nullable|string|max:255',           // 1. Numéro de lot
+            'manufacturing_date' => 'nullable|date',              // 2. Date de fabrication
+            'factory_name' => 'nullable|string|max:255',          // 3. Nom de l'usine
+            'origin_country' => 'nullable|string|max:100',        // 4. Pays d'origine
+            'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
         ]);
 
         // Générer un code-barres automatiquement si non fourni
@@ -137,7 +133,34 @@ class ProductController extends Controller
             }
         }
 
+        // Logger les données reçues pour debug
+        \Log::info('Création produit - Données reçues', [
+            'user_id' => $request->user()?->id,
+            'user_role' => $request->user()?->role,
+            'request_data' => $request->all(),
+            'validated_data' => $validated,
+            'traceability_fields' => [
+                'batch_number' => $validated['batch_number'] ?? 'NON FOURNI',
+                'manufacturing_date' => $validated['manufacturing_date'] ?? 'NON FOURNI',
+                'factory_name' => $validated['factory_name'] ?? 'NON FOURNI',
+                'origin_country' => $validated['origin_country'] ?? 'NON FOURNI',
+                'certificate_number' => $validated['certificate_number'] ?? 'NON FOURNI',
+            ]
+        ]);
+
         $product = Product::create($validated);
+        
+        // Recharger pour vérifier que les données sont bien enregistrées
+        $product->refresh();
+        \Log::info('Produit créé - Vérification', [
+            'product_id' => $product->id,
+            'batch_number' => $product->batch_number ?? 'NULL',
+            'manufacturing_date' => $product->manufacturing_date ?? 'NULL',
+            'factory_name' => $product->factory_name ?? 'NULL',
+            'origin_country' => $product->origin_country ?? 'NULL',
+            'certificate_number' => $product->certificate_number ?? 'NULL',
+        ]);
+        
         $product->load('zone.store'); // Charger les relations pour la localisation
         $product->updateStatus();
         $this->alertService->checkProduct($product);
@@ -146,30 +169,12 @@ class ProductController extends Controller
         $traceMetadata = [
             'barcode' => $product->barcode,
             'name' => $product->name,
-            // Informations de traçabilité complète
+            // Informations de traçabilité (5 informations essentielles)
             'batch_number' => $product->batch_number,
             'manufacturing_date' => $product->manufacturing_date ? (is_string($product->manufacturing_date) ? $product->manufacturing_date : $product->manufacturing_date->format('Y-m-d')) : null,
             'factory_name' => $product->factory_name,
-            'factory_address' => $product->factory_address,
-            'factory_contact_person' => $product->factory_contact_person,
-            'factory_phone' => $product->factory_phone,
-            'factory_email' => $product->factory_email,
             'origin_country' => $product->origin_country,
-            'origin_region' => $product->origin_region,
             'certificate_number' => $product->certificate_number,
-            'certificate_type' => $product->certificate_type,
-            'certificate_issue_date' => $product->certificate_issue_date ? (is_string($product->certificate_issue_date) ? $product->certificate_issue_date : $product->certificate_issue_date->format('Y-m-d')) : null,
-            'certificate_expiry_date' => $product->certificate_expiry_date ? (is_string($product->certificate_expiry_date) ? $product->certificate_expiry_date : $product->certificate_expiry_date->format('Y-m-d')) : null,
-            'import_document_number' => $product->import_document_number,
-            'import_date' => $product->import_date ? (is_string($product->import_date) ? $product->import_date : $product->import_date->format('Y-m-d')) : null,
-            'customs_declaration_number' => $product->customs_declaration_number,
-            'transport_method' => $product->transport_method,
-            'transport_company' => $product->transport_company,
-            'transport_document_number' => $product->transport_document_number,
-            'storage_temperature' => $product->storage_temperature,
-            'storage_conditions' => $product->storage_conditions,
-            'serial_number' => $product->serial_number,
-            'supplier_reception_date' => $product->supplier_reception_date ? (is_string($product->supplier_reception_date) ? $product->supplier_reception_date : $product->supplier_reception_date->format('Y-m-d')) : null,
             // Informations du fournisseur
             'supplier_id' => $product->supplier_id,
             'supplier_name' => $product->supplier?->name,
@@ -239,34 +244,39 @@ class ProductController extends Controller
             'photo' => 'sometimes|string', // Photo optionnelle lors de la mise à jour (peut être omise)
             'barcode' => 'nullable|string',
             'notes' => 'nullable|string',
-            // Champs de traçabilité (tous nullable - optionnels)
-            'batch_number' => 'nullable|string|max:255',
-            'manufacturing_date' => 'nullable|date',
-            'factory_name' => 'nullable|string|max:255',
-            'factory_address' => 'nullable|string',
-            'factory_contact_person' => 'nullable|string|max:255',
-            'factory_phone' => 'nullable|string|max:50',
-            'factory_email' => 'nullable|email|max:255',
-            'origin_country' => 'nullable|string|max:100',
-            'origin_region' => 'nullable|string|max:255',
-            'certificate_number' => 'nullable|string|max:255',
-            'certificate_type' => 'nullable|string|max:100',
-            'certificate_issue_date' => 'nullable|date',
-            'certificate_expiry_date' => 'nullable|date',
-            'certificate_file_path' => 'nullable|string',
-            'import_document_number' => 'nullable|string|max:255',
-            'import_date' => 'nullable|date',
-            'customs_declaration_number' => 'nullable|string|max:255',
-            'transport_method' => 'nullable|string|max:50',
-            'transport_company' => 'nullable|string|max:255',
-            'transport_document_number' => 'nullable|string|max:255',
-            'storage_temperature' => 'nullable|string|max:50',
-            'storage_conditions' => 'nullable|string',
-            'serial_number' => 'nullable|string|max:255',
-            'supplier_reception_date' => 'nullable|date',
+            // Champs de traçabilité (5 informations essentielles - tous nullable)
+            'batch_number' => 'nullable|string|max:255',           // 1. Numéro de lot
+            'manufacturing_date' => 'nullable|date',              // 2. Date de fabrication
+            'factory_name' => 'nullable|string|max:255',          // 3. Nom de l'usine
+            'origin_country' => 'nullable|string|max:100',        // 4. Pays d'origine
+            'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
+        ]);
+
+        // Logger les données reçues pour debug
+        \Log::info('Mise à jour produit', [
+            'product_id' => $product->id,
+            'user_id' => $request->user()?->id,
+            'validated_data' => $validated,
+            'traceability_fields' => [
+                'batch_number' => $validated['batch_number'] ?? null,
+                'manufacturing_date' => $validated['manufacturing_date'] ?? null,
+                'factory_name' => $validated['factory_name'] ?? null,
+                'origin_country' => $validated['origin_country'] ?? null,
+                'certificate_number' => $validated['certificate_number'] ?? null,
+            ]
         ]);
 
         $product->update($validated);
+        
+        // Recharger le produit pour vérifier que les données sont bien enregistrées
+        $product->refresh();
+        \Log::info('Produit après mise à jour', [
+            'product_id' => $product->id,
+            'batch_number' => $product->batch_number,
+            'factory_name' => $product->factory_name,
+            'origin_country' => $product->origin_country,
+            'certificate_number' => $product->certificate_number,
+        ]);
         $product->load('zone.store'); // Charger les relations pour la localisation
         $product->updateStatus();
         $this->alertService->checkProduct($product);
@@ -277,6 +287,8 @@ class ProductController extends Controller
             'changes' => array_keys($validated)
         ]);
 
+        // Recharger avec toutes les relations et les champs de traçabilité
+        $product->refresh();
         return response()->json($product->load(['category', 'supplier', 'zone.store']));
     }
 
@@ -487,6 +499,91 @@ class ProductController extends Controller
                 'stock_info' => [
                     'old_quantity' => $oldQuantity,
                     'quantity_added' => $quantityToAdd,
+                    'new_quantity' => $newQuantity,
+                    'unit' => $product->unit
+                ]
+            ]);
+        });
+    }
+
+    /**
+     * Réduire le stock d'un produit
+     */
+    public function reduceStock(Request $request, string $id)
+    {
+        $product = Product::findOrFail($id);
+        
+        // Vérifier les permissions
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        if (!(new \App\Policies\ProductPolicy())->reduceStock($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'quantity' => 'required|numeric|min:0.001',
+            'reason' => 'nullable|string|max:255', // Raison de la réduction (utilisé, gaspillé, perdu, etc.)
+            'notes' => 'nullable|string',
+            'type' => 'nullable|string|in:used,wasted,exit,transformed', // Type de mouvement de stock
+        ]);
+
+        return DB::transaction(function () use ($product, $validated, $request) {
+            $quantityToReduce = $validated['quantity'];
+            $oldQuantity = $product->quantity;
+            
+            // Vérifier que le stock est suffisant
+            if ($oldQuantity < $quantityToReduce) {
+                return response()->json([
+                    'error' => 'Stock insuffisant',
+                    'current_stock' => $oldQuantity,
+                    'requested_reduction' => $quantityToReduce,
+                    'unit' => $product->unit
+                ], 400);
+            }
+
+            // Calculer la nouvelle quantité
+            $newQuantity = $oldQuantity - $quantityToReduce;
+
+            // Mettre à jour le stock
+            $product->quantity = $newQuantity;
+            $product->save();
+
+            // Déterminer le type de mouvement
+            $movementType = $validated['type'] ?? 'exit'; // Par défaut: sortie
+            $reason = $validated['reason'] ?? 'Réduction de stock';
+            
+            // Créer un mouvement de stock pour enregistrer la réduction
+            \App\Models\StockMovement::create([
+                'product_id' => $product->id,
+                'user_id' => $request->user()?->id,
+                'type' => $movementType,
+                'quantity' => $quantityToReduce,
+                'notes' => $validated['notes'] ?? "Réduction de stock - {$reason}. Quantité retirée: {$quantityToReduce} {$product->unit}",
+            ]);
+
+            // Mettre à jour le statut du produit si nécessaire
+            $product->load('zone.store');
+            $product->updateStatus();
+            $this->alertService->checkProduct($product);
+
+            // Enregistrer dans la traçabilité
+            $this->recordTrace($product->id, 'stock_removed', $request->user()?->id, [
+                'quantity_removed' => $quantityToReduce,
+                'old_quantity' => $oldQuantity,
+                'new_quantity' => $newQuantity,
+                'reason' => $reason,
+                'movement_type' => $movementType
+            ]);
+
+            return response()->json([
+                'message' => "Stock réduit avec succès",
+                'product' => $product->load(['category', 'supplier', 'zone.store']),
+                'stock_info' => [
+                    'old_quantity' => $oldQuantity,
+                    'quantity_removed' => $quantityToReduce,
                     'new_quantity' => $newQuantity,
                     'unit' => $product->unit
                 ]

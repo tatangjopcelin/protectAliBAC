@@ -8,14 +8,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ShoppingListItem extends Model
 {
     protected $fillable = [
-        'name',
+        'name', // Nom du produit à acheter
         'quantity',
         'unit',
         'category_id',
         'product_id',
         'priority',
         'status',
-        'added_by',
+        'added_by', // Créateur de l'item
         'ordered_by',
         'notes',
         'ordered_at',

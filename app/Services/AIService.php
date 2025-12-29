@@ -9,10 +9,16 @@ use App\Models\StockMovement;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use OpenAI\Laravel\Facades\OpenAI;
+use App\Services\CohereService;
 
 class AIService
 {
+    protected $aiService;
+
+    public function __construct(CohereService $aiService)
+    {
+        $this->aiService = $aiService;
+    }
     /**
      * Génère des suggestions de recettes basées sur les produits qui expirent bientôt (avec IA)
      */
@@ -60,7 +66,7 @@ class AIService
     }
 
     /**
-     * Utilise OpenAI pour générer des suggestions de recettes intelligentes
+     * Utilise Cohere pour générer des suggestions de recettes intelligentes
      */
     private function getAIRecipeSuggestions(Product $product, $existingRecipes): array
     {
@@ -93,21 +99,16 @@ class AIService
             $prompt .= "Réponds en JSON avec ce format:\n";
             $prompt .= '{"suggestions": [{"title": "Nom de la recette", "description": "Description détaillée", "ingredients": ["ingrédient1", "ingrédient2"], "confidence": 0.8}]}';
 
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Tu es un chef expert qui aide à réduire le gaspillage alimentaire en suggérant des recettes créatives.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
+            $response = $this->aiService->chat([
+                [
+                    'role' => 'system',
+                    'content' => 'Tu es un chef expert qui aide à réduire le gaspillage alimentaire en suggérant des recettes créatives.'
                 ],
-                'temperature' => 0.7,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ], 'command', 0.7, ['response_format' => ['type' => 'json_object']]);
 
             $content = $response->choices[0]->message->content;
             $aiData = json_decode($content, true);
@@ -161,7 +162,7 @@ class AIService
             return $suggestions;
 
         } catch (\Exception $e) {
-            Log::error('Erreur OpenAI pour suggestions de recettes: ' . $e->getMessage());
+            Log::error('Erreur Cohere pour suggestions de recettes: ' . $e->getMessage());
             
             // Fallback: suggestions basiques sans IA
             $suggestions = [];
@@ -257,7 +258,7 @@ class AIService
     }
 
     /**
-     * Utilise OpenAI pour analyser les patterns de consommation
+     * Utilise Cohere pour analyser les patterns de consommation
      */
     private function getAIConsumptionAnalysis(Product $product, $consumptionByDay, $consumptionByDayOfWeek, int $days): ?array
     {
@@ -282,27 +283,22 @@ class AIService
             $prompt .= "Prédits la consommation pour les {$days} prochains jours en tenant compte des patterns (weekends, tendances, etc.).\n";
             $prompt .= "Réponds en JSON: {\"predicted_consumption\": nombre, \"confidence\": 0.0-1.0, \"reasoning\": \"explication\"}";
 
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Tu es un expert en analyse de données et prédiction de consommation pour restaurants.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
+            $response = $this->aiService->chat([
+                [
+                    'role' => 'system',
+                    'content' => 'Tu es un expert en analyse de données et prédiction de consommation pour restaurants.'
                 ],
-                'temperature' => 0.3,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ], 'command', 0.3, ['response_format' => ['type' => 'json_object']]);
 
             $content = $response->choices[0]->message->content;
             return json_decode($content, true);
 
         } catch (\Exception $e) {
-            Log::error('Erreur OpenAI pour prédiction consommation: ' . $e->getMessage());
+            Log::error('Erreur Cohere pour prédiction consommation: ' . $e->getMessage());
             return null;
         }
     }
@@ -386,7 +382,7 @@ class AIService
     }
 
     /**
-     * Utilise OpenAI pour analyser les commandes nécessaires
+     * Utilise Cohere pour analyser les commandes nécessaires
      */
     private function getAIOrderAnalysis(Product $product, array $prediction): array
     {
@@ -408,27 +404,22 @@ class AIService
             $prompt .= "- La saisonnalité\n";
             $prompt .= "\nRéponds en JSON: {\"suggested_quantity\": nombre, \"title\": \"titre\", \"description\": \"description détaillée\", \"reasoning\": \"raisonnement\"}";
 
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Tu es un expert en gestion de stock et optimisation des commandes pour restaurants.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
+            $response = $this->aiService->chat([
+                [
+                    'role' => 'system',
+                    'content' => 'Tu es un expert en gestion de stock et optimisation des commandes pour restaurants.'
                 ],
-                'temperature' => 0.3,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ], 'command', 0.3, ['response_format' => ['type' => 'json_object']]);
 
             $content = $response->choices[0]->message->content;
             return json_decode($content, true);
 
         } catch (\Exception $e) {
-            Log::error('Erreur OpenAI pour analyse commande: ' . $e->getMessage());
+            Log::error('Erreur Cohere pour analyse commande: ' . $e->getMessage());
             return [
                 'suggested_quantity' => max(0, $prediction['predicted_consumption'] - $product->quantity) + ($product->min_quantity * 2),
                 'title' => "Commande suggérée: {$product->name}",
@@ -484,7 +475,7 @@ class AIService
     }
 
     /**
-     * Utilise OpenAI pour analyser les anomalies
+     * Utilise Cohere pour analyser les anomalies
      */
     private function getAIAnomalyAnalysis(Product $product, float $recent, float $average, float $ratio): array
     {
@@ -501,27 +492,22 @@ class AIService
             $prompt .= "3. Des recommandations d'action\n";
             $prompt .= "\nRéponds en JSON: {\"severity\": \"low|medium|high|critical\", \"possible_causes\": [\"cause1\", \"cause2\"], \"recommendations\": [\"rec1\", \"rec2\"], \"reasoning\": \"explication\"}";
 
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Tu es un expert en analyse de données et détection d\'anomalies pour restaurants.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
+            $response = $this->aiService->chat([
+                [
+                    'role' => 'system',
+                    'content' => 'Tu es un expert en analyse de données et détection d\'anomalies pour restaurants.'
                 ],
-                'temperature' => 0.5,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ], 'command', 0.5, ['response_format' => ['type' => 'json_object']]);
 
             $content = $response->choices[0]->message->content;
             return json_decode($content, true);
 
         } catch (\Exception $e) {
-            Log::error('Erreur OpenAI pour analyse anomalie: ' . $e->getMessage());
+            Log::error('Erreur Cohere pour analyse anomalie: ' . $e->getMessage());
             return [
                 'severity' => $ratio > 3.0 ? 'critical' : ($ratio > 2.0 ? 'high' : 'medium'),
                 'possible_causes' => ['Données insuffisantes pour analyse détaillée'],
@@ -575,7 +561,7 @@ class AIService
     }
 
     /**
-     * Utilise OpenAI pour suggérer des solutions de réduction de gaspillage
+     * Utilise Cohere pour suggérer des solutions de réduction de gaspillage
      */
     private function getAIWasteReductionSuggestions(Product $product, float $totalWasted, float $wastedValue): array
     {
@@ -593,21 +579,16 @@ class AIService
             $prompt .= "- Optimisation des commandes\n";
             $prompt .= "\nRéponds en JSON: {\"suggestions\": [{\"title\": \"titre\", \"description\": \"description détaillée\", \"type\": \"immediate|long_term|transformation\", \"confidence\": 0.8}]}";
 
-            $response = OpenAI::chat()->create([
-                'model' => 'gpt-4o-mini',
-                'messages' => [
-                    [
-                        'role' => 'system',
-                        'content' => 'Tu es un expert en réduction du gaspillage alimentaire et optimisation des stocks pour restaurants.'
-                    ],
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
+            $response = $this->aiService->chat([
+                [
+                    'role' => 'system',
+                    'content' => 'Tu es un expert en réduction du gaspillage alimentaire et optimisation des stocks pour restaurants.'
                 ],
-                'temperature' => 0.7,
-                'response_format' => ['type' => 'json_object'],
-            ]);
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ], 'command', 0.7, ['response_format' => ['type' => 'json_object']]);
 
             $content = $response->choices[0]->message->content;
             $aiData = json_decode($content, true);
@@ -626,7 +607,7 @@ class AIService
             return [];
 
         } catch (\Exception $e) {
-            Log::error('Erreur OpenAI pour suggestions réduction gaspillage: ' . $e->getMessage());
+            Log::error('Erreur Cohere pour suggestions réduction gaspillage: ' . $e->getMessage());
             return [
                 [
                     'title' => "Réduire le gaspillage de {$product->name}",

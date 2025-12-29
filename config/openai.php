@@ -12,7 +12,7 @@ return [
     | and organization on your OpenAI dashboard, at https://openai.com.
     */
 
-    'api_key' => env('OPENAI_API_KEY'),
+    'api_key' => env('GROK_API_KEY', env('OPENAI_API_KEY')),
     'organization' => env('OPENAI_ORGANIZATION'),
 
     /*
@@ -34,7 +34,7 @@ return [
     | Here you may specify your OpenAI API base URL used to make requests. This
     | is needed if using a custom API endpoint. Defaults to: api.openai.com/v1
     */
-    'base_uri' => env('OPENAI_BASE_URL'),
+    'base_uri' => env('GROK_BASE_URL', env('OPENAI_BASE_URL', 'https://api.x.ai/v1')),
 
     /*
     |--------------------------------------------------------------------------

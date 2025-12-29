@@ -218,13 +218,15 @@ class UserController extends Controller
             ],
         ]);
 
-        // Empêcher de modifier le rôle d'un autre admin (sauf si c'est soi-même)
-        if ($user->isAdmin() && $user->id !== $request->user()?->id) {
+        // Empêcher de modifier son propre rôle
+        if ($user->id === $request->user()?->id) {
             return response()->json([
-                'message' => 'Accès refusé. Vous ne pouvez pas modifier le rôle d\'un autre admin.'
+                'message' => 'Accès refusé. Vous ne pouvez pas modifier votre propre rôle.'
             ], 403);
         }
 
+        // Note: Un admin peut maintenant modifier le rôle d'un autre admin
+        // C'est une fonctionnalité de gestion importante pour les administrateurs
         $user->update(['role' => $validated['role']]);
 
         return response()->json([

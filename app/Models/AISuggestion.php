@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AISuggestion extends Model
 {
+    protected $table = 'ai_suggestions';
+
     protected $fillable = [
         'type',
         'title',

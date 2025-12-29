@@ -25,31 +25,12 @@ class Product extends Model
         'notes',
         'status',
         'is_active',
-        // Champs de traçabilité complète
-        'batch_number',
-        'manufacturing_date',
-        'factory_name',
-        'factory_address',
-        'factory_contact_person',
-        'factory_phone',
-        'factory_email',
-        'origin_country',
-        'origin_region',
-        'certificate_number',
-        'certificate_type',
-        'certificate_issue_date',
-        'certificate_expiry_date',
-        'certificate_file_path',
-        'import_document_number',
-        'import_date',
-        'customs_declaration_number',
-        'transport_method',
-        'transport_company',
-        'transport_document_number',
-        'storage_temperature',
-        'storage_conditions',
-        'serial_number',
-        'supplier_reception_date',
+        // Champs de traçabilité (5 informations essentielles)
+        'batch_number',           // 1. Numéro de lot
+        'manufacturing_date',     // 2. Date de fabrication
+        'factory_name',           // 3. Nom de l'usine
+        'origin_country',         // 4. Pays d'origine
+        'certificate_number',     // 5. Numéro de certificat
     ];
 
     protected $casts = [
@@ -59,12 +40,8 @@ class Product extends Model
         'reception_date' => 'date',
         'expiration_date' => 'date',
         'is_active' => 'boolean',
-        // Dates de traçabilité
+        // Date de traçabilité
         'manufacturing_date' => 'date',
-        'certificate_issue_date' => 'date',
-        'certificate_expiry_date' => 'date',
-        'import_date' => 'date',
-        'supplier_reception_date' => 'date',
     ];
 
     public function category(): BelongsTo
