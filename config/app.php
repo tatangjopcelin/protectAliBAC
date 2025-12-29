@@ -56,6 +56,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | This URL is used to generate links in emails that point to the frontend
+    | application (e.g., email verification links).
+    |
+    */
+
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:8101'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

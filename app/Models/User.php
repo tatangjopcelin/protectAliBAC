@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasApiTokens;
@@ -24,6 +24,9 @@ class User extends Authenticatable
         'password',
         'role',
         'zone_id',
+        'email_verified_at',
+        'email_verification_code',
+        'email_verification_code_expires_at',
     ];
 
     /**
@@ -138,5 +141,13 @@ class User extends Authenticatable
     {
         $permissionName = "{$resource}.{$action}";
         return $this->hasPermission($permissionName);
+    }
+
+    /**
+     * Envoyer la notification de vérification d'email personnalisée
+     */
+    public function sendEmailVerificationNotification()
+    {
+        $this->notify(new \App\Notifications\VerifyEmailNotification());
     }
 }

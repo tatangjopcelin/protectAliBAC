@@ -62,7 +62,16 @@ class DashboardController extends Controller
                 ->where('quantity', '>', 0)
                 ->count(),
             'low_stock_count' => Product::where('is_active', true)
-                ->whereColumn('quantity', '<=', 'min_quantity')
+                ->where(function ($query) {
+                    // Produits avec min_quantity défini et quantity <= min_quantity
+                    $query->whereNotNull('min_quantity')
+                          ->whereColumn('quantity', '<=', 'min_quantity');
+                })
+                ->orWhere(function ($query) {
+                    // Produits sans min_quantity mais avec quantity = 0 (stock épuisé)
+                    $query->whereNull('min_quantity')
+                          ->where('quantity', '<=', 0);
+                })
                 ->count(),
             'expired_count' => Product::where('is_active', true)
                 ->where('status', 'expired')
@@ -339,7 +348,16 @@ class DashboardController extends Controller
     private function getLowStockProducts(): array
     {
         return Product::where('is_active', true)
-            ->whereColumn('quantity', '<=', 'min_quantity')
+            ->where(function ($query) {
+                // Produits avec min_quantity défini et quantity <= min_quantity
+                $query->whereNotNull('min_quantity')
+                      ->whereColumn('quantity', '<=', 'min_quantity');
+            })
+            ->orWhere(function ($query) {
+                // Produits sans min_quantity mais avec quantity = 0 (stock épuisé)
+                $query->whereNull('min_quantity')
+                      ->where('quantity', '<=', 0);
+            })
             ->with(['category', 'supplier', 'zone.store'])
             ->orderBy('quantity', 'asc')
             ->get()
@@ -351,7 +369,7 @@ class DashboardController extends Controller
                     'min_quantity' => $product->min_quantity,
                     'unit' => $product->unit,
                     'supplier' => $product->supplier->name ?? null,
-                    'zone' => $product->zone->name,
+                    'zone' => $product->zone->name ?? null,
                     'store' => $product->zone->store->name ?? null,
                 ];
             })

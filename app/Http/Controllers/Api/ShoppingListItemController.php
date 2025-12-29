@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ShoppingListItem;
+use App\Models\User;
+use App\Notifications\ShoppingListItemCreatedNotification;
+use App\Notifications\ShoppingListItemUpdatedNotification;
 use Illuminate\Http\Request;
 
 class ShoppingListItemController extends Controller
@@ -86,6 +89,9 @@ class ShoppingListItemController extends Controller
 
         $item->load(['addedBy', 'category', 'product']);
 
+        // Envoyer une notification par email à tous les autres utilisateurs
+        $this->notifyAllUsersExcept($user, new ShoppingListItemCreatedNotification($item, $user));
+
         return response()->json([
             'message' => 'Produit ajouté à la liste de courses',
             'item' => $item
@@ -142,6 +148,9 @@ class ShoppingListItemController extends Controller
             $item->update($updateData);
             $item->refresh();
             $item->load(['addedBy', 'category', 'product']);
+
+            // Envoyer une notification par email à tous les autres utilisateurs
+            $this->notifyAllUsersExcept($user, new ShoppingListItemUpdatedNotification($item, $user));
 
             return response()->json([
                 'message' => 'Item mis à jour avec succès',
@@ -226,5 +235,38 @@ class ShoppingListItemController extends Controller
             'message' => 'Item marqué comme acheté',
             'item' => $item
         ]);
+    }
+
+    /**
+     * Notifier tous les utilisateurs sauf celui qui a fait l'action
+     */
+    private function notifyAllUsersExcept(User $excludedUser, $notification)
+    {
+        try {
+            // Récupérer tous les utilisateurs sauf celui qui a fait l'action
+            $users = User::where('id', '!=', $excludedUser->id)
+                ->whereNotNull('email_verified_at') // Seulement les utilisateurs vérifiés
+                ->get();
+
+            // Envoyer la notification à chaque utilisateur
+            foreach ($users as $user) {
+                try {
+                    $user->notify($notification);
+                } catch (\Exception $e) {
+                    \Log::error('Erreur envoi notification à utilisateur', [
+                        'user_id' => $user->id,
+                        'user_email' => $user->email,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            \Log::info('Notifications envoyées', [
+                'excluded_user_id' => $excludedUser->id,
+                'notified_users_count' => $users->count()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de l\'envoi des notifications: ' . $e->getMessage());
+        }
     }
 }

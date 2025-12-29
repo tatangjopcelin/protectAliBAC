@@ -10,14 +10,12 @@ class ZoneController extends Controller
 {
     /**
      * Display a listing of the resource.
+     * Accessible publiquement pour permettre la sélection lors de l'inscription.
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        if (!$user) {
-            return response()->json(['message' => 'Non authentifié'], 401);
-        }
-
+        
         $query = Zone::with('store');
         
         // Filtrer par magasin si spécifié
@@ -25,8 +23,9 @@ class ZoneController extends Controller
             $query->where('store_id', $request->store_id);
         }
         
-        // Filtrer seulement les zones actives si l'utilisateur n'est pas admin
-        if (!$user->isAdmin()) {
+        // Si l'utilisateur n'est pas authentifié ou n'est pas admin, 
+        // afficher seulement les zones actives
+        if (!$user || !$user->isAdmin()) {
             $query->where('is_active', true);
         }
 
@@ -74,10 +73,21 @@ class ZoneController extends Controller
 
     /**
      * Display the specified resource.
+     * Accessible publiquement pour permettre la consultation lors de l'inscription.
      */
     public function show(string $id)
     {
         $zone = Zone::with('store')->findOrFail($id);
+        
+        // Si l'utilisateur n'est pas authentifié ou n'est pas admin,
+        // vérifier que la zone est active
+        $user = request()->user();
+        if ((!$user || !$user->isAdmin()) && !$zone->is_active) {
+            return response()->json([
+                'message' => 'Zone non disponible'
+            ], 404);
+        }
+        
         return response()->json($zone);
     }
 

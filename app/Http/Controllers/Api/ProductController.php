@@ -4,8 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\User;
 use App\Services\AlertService;
 use App\Services\NotificationService;
+use App\Notifications\ProductCreatedNotification;
+use App\Notifications\ProductUpdatedNotification;
+use App\Notifications\ProductStockAddedNotification;
+use App\Notifications\ProductStockReducedNotification;
+use App\Notifications\ProductExpiredNotification;
+use App\Notifications\ProductDeletedNotification;
+use App\Notifications\ProductsExpiredBulkNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -165,6 +173,9 @@ class ProductController extends Controller
         $product->updateStatus();
         $this->alertService->checkProduct($product);
 
+        // Envoyer une notification par email à tous les autres utilisateurs
+        $this->notifyAllUsersExcept($user, new ProductCreatedNotification($product, $user));
+
         // Enregistrer la création dans la traçabilité avec toutes les informations d'origine
         $traceMetadata = [
             'barcode' => $product->barcode,
@@ -185,14 +196,7 @@ class ProductController extends Controller
         ];
         $this->recordTrace($product->id, 'created', $request->user()?->id, $traceMetadata);
 
-        // Notifier tous les utilisateurs de l'ajout du produit
-        if ($request->user()) {
-            try {
-                $this->notificationService->notifyProductAdded($product, $request->user());
-            } catch (\Exception $e) {
-                \Log::error('Erreur lors de l\'envoi de notification produit ajouté: ' . $e->getMessage());
-            }
-        }
+        // Les notifications par email sont déjà envoyées via notifyAllUsersExcept() ci-dessus
 
         return response()->json($product->load(['category', 'supplier', 'zone.store']), 201);
     }
@@ -281,6 +285,9 @@ class ProductController extends Controller
         $product->updateStatus();
         $this->alertService->checkProduct($product);
 
+        // Envoyer une notification par email à tous les autres utilisateurs
+        $this->notifyAllUsersExcept($user, new ProductUpdatedNotification($product, $user));
+
         // Enregistrer la modification dans la traçabilité
         $this->recordTrace($product->id, 'updated', $request->user()?->id, [
             'barcode' => $product->barcode,
@@ -295,11 +302,29 @@ class ProductController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
-        $this->authorize('delete', $product);
+        $user = $request->user();
+        
+        // Vérifier les permissions
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        if (!(new \App\Policies\ProductPolicy())->delete($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+        
+        // Charger les relations avant la désactivation
+        $product->load(['category', 'supplier', 'zone.store']);
+        
         $product->update(['is_active' => false]);
+
+        // Envoyer une notification par email à tous les autres utilisateurs
+        if ($user) {
+            $this->notifyAllUsersExcept($user, new ProductDeletedNotification($product, $user));
+        }
 
         return response()->json(['message' => 'Produit désactivé'], 200);
     }
@@ -343,7 +368,16 @@ class ProductController extends Controller
     public function markAsExpired(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
-        $this->authorize('markExpired', $product);
+        
+        // Vérifier les permissions
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        if (!(new \App\Policies\ProductPolicy())->markExpired($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
         
         if (!$product->isExpired()) {
             return response()->json([
@@ -377,6 +411,11 @@ class ProductController extends Controller
             // Mettre à jour les alertes
             $this->alertService->checkProduct($product);
 
+            // Envoyer une notification par email à tous les autres utilisateurs
+            if ($request->user()) {
+                $this->notifyAllUsersExcept($request->user(), new ProductExpiredNotification($product, $request->user(), $quantityToRemove));
+            }
+
             return response()->json([
                 'message' => "Le produit {$product->name} a été marqué comme périmé et retiré du stock",
                 'product' => $product->load(['category', 'supplier', 'zone.store']),
@@ -391,7 +430,16 @@ class ProductController extends Controller
     public function addStock(Request $request, string $id)
     {
         $product = Product::findOrFail($id);
-        $this->authorize('addStock', $product);
+        
+        // Vérifier les permissions
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        if (!(new \App\Policies\ProductPolicy())->addStock($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
 
         $validated = $request->validate([
             'quantity' => 'required|numeric|min:0.001',
@@ -401,6 +449,7 @@ class ProductController extends Controller
             'supplier_id' => 'nullable|exists:suppliers,id',
             'zone_id' => 'nullable|exists:zones,id',
             'notes' => 'nullable|string',
+            'photo' => 'nullable|string', // Photo en base64
             'force_update_date' => 'nullable|boolean', // Forcer la mise à jour même si date différente
             'create_new_product' => 'nullable|boolean', // Créer un nouveau produit si date différente
         ]);
@@ -457,6 +506,10 @@ class ProductController extends Controller
             if (isset($validated['supplier_id'])) {
                 $product->supplier_id = $validated['supplier_id'];
             }
+            // Mettre à jour la photo si fournie
+            if (isset($validated['photo']) && !empty($validated['photo'])) {
+                $product->photo = $validated['photo'];
+            }
             // Note: On ne change pas la zone si elle est différente, car cela pourrait être un nouveau lot dans une autre zone
             // Si nécessaire, l'utilisateur peut créer un nouveau produit
 
@@ -484,13 +537,9 @@ class ProductController extends Controller
                 'new_quantity' => $newQuantity
             ]);
 
-            // Notifier tous les utilisateurs de l'ajout de stock
+            // Envoyer une notification par email à tous les autres utilisateurs
             if ($request->user()) {
-                try {
-                    $this->notificationService->notifyProductAdded($product, $request->user());
-                } catch (\Exception $e) {
-                    \Log::error('Erreur lors de l\'envoi de notification stock ajouté: ' . $e->getMessage());
-                }
+                $this->notifyAllUsersExcept($request->user(), new ProductStockAddedNotification($product, $request->user(), $quantityToAdd, $oldQuantity, $newQuantity));
             }
 
             return response()->json([
@@ -578,6 +627,11 @@ class ProductController extends Controller
                 'movement_type' => $movementType
             ]);
 
+            // Envoyer une notification par email à tous les autres utilisateurs
+            if ($request->user()) {
+                $this->notifyAllUsersExcept($request->user(), new ProductStockReducedNotification($product, $request->user(), $quantityToReduce, $oldQuantity, $newQuantity, $reason, $movementType));
+            }
+
             return response()->json([
                 'message' => "Stock réduit avec succès",
                 'product' => $product->load(['category', 'supplier', 'zone.store']),
@@ -608,6 +662,7 @@ class ProductController extends Controller
             'reception_date' => $validated['reception_date'] ?? Carbon::today(),
             'expiration_date' => $validated['expiration_date'],
             'purchase_price' => $validated['purchase_price'] ?? $existingProduct->purchase_price,
+            'photo' => $validated['photo'] ?? $existingProduct->photo, // Utiliser la nouvelle photo si fournie, sinon garder l'ancienne
             'barcode' => $this->generateBarcode(), // Nouveau code-barres unique
             'notes' => ($validated['notes'] ?? '') . " - Nouveau lot (date de péremption différente)",
         ];
@@ -696,6 +751,11 @@ class ProductController extends Controller
                     'error' => $e->getMessage()
                 ];
             }
+        }
+
+        // Envoyer une notification par email à tous les autres utilisateurs
+        if ($request->user() && $processed > 0) {
+            $this->notifyAllUsersExcept($request->user(), new ProductsExpiredBulkNotification($request->user(), $processed, $expiredProducts->count()));
         }
 
         return response()->json([
@@ -887,5 +947,38 @@ class ProductController extends Controller
         } while ($exists);
 
         return $barcode;
+    }
+
+    /**
+     * Notifier tous les utilisateurs sauf celui qui a fait l'action
+     */
+    private function notifyAllUsersExcept(User $excludedUser, $notification)
+    {
+        try {
+            // Récupérer tous les utilisateurs sauf celui qui a fait l'action
+            $users = User::where('id', '!=', $excludedUser->id)
+                ->whereNotNull('email_verified_at') // Seulement les utilisateurs vérifiés
+                ->get();
+
+            // Envoyer la notification à chaque utilisateur
+            foreach ($users as $user) {
+                try {
+                    $user->notify($notification);
+                } catch (\Exception $e) {
+                    \Log::error('Erreur envoi notification à utilisateur', [
+                        'user_id' => $user->id,
+                        'user_email' => $user->email,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            \Log::info('Notifications envoyées', [
+                'excluded_user_id' => $excludedUser->id,
+                'notified_users_count' => $users->count()
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Erreur lors de l\'envoi des notifications: ' . $e->getMessage());
+        }
     }
 }
