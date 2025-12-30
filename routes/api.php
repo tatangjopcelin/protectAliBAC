@@ -19,6 +19,8 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ShoppingListController;
 use App\Http\Controllers\Api\ShoppingListItemController;
+use App\Http\Controllers\Api\ScheduleController;
+use App\Http\Controllers\Api\TimeEntryController;
 use App\Http\Controllers\Api\AuthController;
 
 // Routes d'authentification (publiques)
@@ -139,4 +141,25 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les items de la liste de courses
     Route::apiResource('shopping-list-items', ShoppingListItemController::class);
     Route::post('/shopping-list-items/{id}/mark-purchased', [ShoppingListItemController::class, 'markAsPurchased']); // Marquer comme acheté
+});
+
+// Routes pour le planning et le pointage
+Route::middleware('auth:sanctum')->group(function () {
+    // Routes pour les plannings
+    Route::get('/schedules/weekly', [ScheduleController::class, 'getWeeklySchedule']); // Planning hebdomadaire
+    Route::get('/schedules/monthly', [ScheduleController::class, 'getMonthlySchedule']); // Planning mensuel
+    Route::apiResource('schedules', ScheduleController::class);
+    
+    // Routes pour les pointages
+    Route::post('/time-entries/clock-in', [TimeEntryController::class, 'clockIn']); // Pointer l'arrivée
+    Route::post('/time-entries/clock-out', [TimeEntryController::class, 'clockOut']); // Pointer le départ
+    Route::get('/time-entries/today', [TimeEntryController::class, 'getTodayEntry']); // Pointage du jour
+    Route::get('/time-entries/user/{userId}', [TimeEntryController::class, 'getUserEntries']); // Historique des pointages
+    Route::get('/time-entries/statistics', [TimeEntryController::class, 'getStatistics']); // Statistiques
+    Route::apiResource('time-entries', TimeEntryController::class);
+    
+    // Routes pour les pauses
+    Route::post('/breaks/start', [BreakController::class, 'startBreak']); // Démarrer une pause
+    Route::post('/breaks/end', [BreakController::class, 'endBreak']); // Terminer une pause
+    Route::get('/breaks/time-entry/{timeEntryId}', [BreakController::class, 'getBreaks']); // Obtenir les pauses d'un time entry
 });

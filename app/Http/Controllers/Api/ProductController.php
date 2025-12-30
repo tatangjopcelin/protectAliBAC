@@ -117,7 +117,7 @@ class ProductController extends Controller
             'expiration_date' => 'required|date|after:reception_date',
             'purchase_price' => 'nullable|numeric|min:0',
             'photo' => 'required|string', // Photo obligatoire pour la traçabilité
-            'barcode' => 'nullable|string',
+            'barcode' => 'required|string|max:255', // QR code obligatoire - doit être scanné depuis l'étiquette du produit
             'notes' => 'nullable|string',
             // Champs de traçabilité (5 informations essentielles - tous nullable)
             'batch_number' => 'nullable|string|max:255',           // 1. Numéro de lot
@@ -127,18 +127,14 @@ class ProductController extends Controller
             'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
         ]);
 
-        // Générer un code-barres automatiquement si non fourni
-        if (empty($validated['barcode'])) {
-            $validated['barcode'] = $this->generateBarcode();
-        } else {
-            // Vérifier l'unicité du code-barres
-            $existing = Product::where('barcode', $validated['barcode'])->where('is_active', true)->first();
-            if ($existing) {
-                return response()->json([
-                    'error' => 'Ce code-barres existe déjà',
-                    'existing_product' => $existing->load(['category', 'zone'])
-                ], 422);
-            }
+        // Vérifier l'unicité du code-barres (le QR code doit être unique et scanné depuis l'étiquette)
+        $existing = Product::where('barcode', $validated['barcode'])->where('is_active', true)->first();
+        if ($existing) {
+            return response()->json([
+                'error' => 'Ce code-barres existe déjà',
+                'message' => 'Ce QR code est déjà utilisé par un autre produit. Veuillez scanner le QR code unique de ce produit.',
+                'existing_product' => $existing->load(['category', 'zone'])
+            ], 422);
         }
 
         // Logger les données reçues pour debug
@@ -384,6 +380,16 @@ class ProductController extends Controller
             return response()->json([
                 'message' => 'Ce produit est déjà marqué comme périmé'
             ], 200);
+        }
+
+        // Vérifier si le produit est effectivement périmé selon la date
+        // Le marquage manuel n'est autorisé que si le produit est déjà périmé
+        if (!$product->isExpired()) {
+            return response()->json([
+                'error' => 'Ce produit n\'est pas encore périmé. Le marquage comme périmé se fait automatiquement lorsque la date de péremption est dépassée.',
+                'expiration_date' => $product->expiration_date,
+                'is_expired' => false
+            ], 400);
         }
 
         if ($product->quantity <= 0) {
@@ -651,6 +657,24 @@ class ProductController extends Controller
      */
     private function createNewProductFromExisting(Product $existingProduct, array $validated, Request $request)
     {
+        // Vérifier que le barcode est fourni (obligatoire)
+        if (empty($validated['barcode'])) {
+            return response()->json([
+                'error' => 'Le QR code est obligatoire',
+                'message' => 'Pour créer un nouveau produit, vous devez scanner le QR code unique de l\'étiquette du produit.'
+            ], 422);
+        }
+
+        // Vérifier l'unicité du barcode
+        $existing = Product::where('barcode', $validated['barcode'])->where('is_active', true)->first();
+        if ($existing) {
+            return response()->json([
+                'error' => 'Ce code-barres existe déjà',
+                'message' => 'Ce QR code est déjà utilisé par un autre produit. Veuillez scanner le QR code unique de ce produit.',
+                'existing_product' => $existing->load(['category', 'zone'])
+            ], 422);
+        }
+
         // Créer un nouveau produit avec les mêmes caractéristiques mais nouvelle date
         $newProductData = [
             'name' => $existingProduct->name,
@@ -664,7 +688,7 @@ class ProductController extends Controller
             'expiration_date' => $validated['expiration_date'],
             'purchase_price' => $validated['purchase_price'] ?? $existingProduct->purchase_price,
             'photo' => $validated['photo'] ?? $existingProduct->photo, // Utiliser la nouvelle photo si fournie, sinon garder l'ancienne
-            'barcode' => $this->generateBarcode(), // Nouveau code-barres unique
+            'barcode' => $validated['barcode'], // Le barcode est obligatoire et doit être scanné
             'notes' => ($validated['notes'] ?? '') . " - Nouveau lot (date de péremption différente)",
         ];
 

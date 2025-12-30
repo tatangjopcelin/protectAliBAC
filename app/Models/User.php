@@ -57,6 +57,16 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(StockMovement::class);
     }
 
+    public function schedules(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\Schedule::class);
+    }
+
+    public function timeEntries(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(\App\Models\TimeEntry::class);
+    }
+
     public function isAdmin(): bool
     {
         return $this->role === 'admin';

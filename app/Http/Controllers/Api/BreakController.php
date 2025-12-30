@@ -1,0 +1,115 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\WorkBreak;
+use App\Models\TimeEntry;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
+
+class BreakController extends Controller
+{
+    /**
+     * Démarrer une pause
+     */
+    public function startBreak(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Trouver le time entry actif pour cet utilisateur
+        $timeEntry = TimeEntry::where('user_id', $user->id)
+            ->whereDate('date', Carbon::today())
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->first();
+
+        if (!$timeEntry) {
+            return response()->json(['message' => 'Aucun pointage actif trouvé'], 404);
+        }
+
+        // Vérifier s'il y a déjà une pause en cours
+        $activeBreak = WorkBreak::where('time_entry_id', $timeEntry->id)
+            ->whereNotNull('start_break')
+            ->whereNull('end_break')
+            ->first();
+
+        if ($activeBreak) {
+            return response()->json(['message' => 'Une pause est déjà en cours'], 400);
+        }
+
+        $break = WorkBreak::create([
+            'time_entry_id' => $timeEntry->id,
+            'user_id' => $user->id,
+            'start_break' => Carbon::now(),
+        ]);
+
+        return response()->json($break, 201);
+    }
+
+    /**
+     * Terminer une pause
+     */
+    public function endBreak(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Trouver la pause active
+        $break = WorkBreak::where('user_id', $user->id)
+            ->whereNotNull('start_break')
+            ->whereNull('end_break')
+            ->latest()
+            ->first();
+
+        if (!$break) {
+            return response()->json(['message' => 'Aucune pause active trouvée'], 404);
+        }
+
+        $break->end_break = Carbon::now();
+        $break->duration_minutes = $break->calculateDuration();
+        $break->save();
+
+        // Mettre à jour le time entry avec la durée totale de pause
+        $timeEntry = $break->timeEntry;
+        $totalBreakMinutes = WorkBreak::where('time_entry_id', $timeEntry->id)
+            ->whereNotNull('end_break')
+            ->sum('duration_minutes');
+        
+        $timeEntry->break_duration = $totalBreakMinutes / 60;
+        $timeEntry->hours_worked = $timeEntry->calculateHoursWorked();
+        $timeEntry->save();
+
+        return response()->json($break->load('timeEntry'));
+    }
+
+    /**
+     * Obtenir les pauses d'un time entry
+     */
+    public function getBreaks(Request $request, $timeEntryId)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $timeEntry = TimeEntry::findOrFail($timeEntryId);
+
+        // Vérifier les permissions
+        if ($timeEntry->user_id !== $user->id && !in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $breaks = WorkBreak::where('time_entry_id', $timeEntryId)
+            ->orderBy('start_break', 'asc')
+            ->get();
+
+        return response()->json($breaks);
+    }
+}
