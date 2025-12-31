@@ -21,11 +21,25 @@ class BreakController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
+        $validated = $request->validate([
+            'user_id' => 'nullable|exists:users,id',
+        ]);
+
+        // Si un user_id est fourni et que l'utilisateur est admin/chef/director, utiliser cet user_id
+        // Sinon, utiliser l'utilisateur authentifié
+        $targetUserId = $validated['user_id'] ?? $user->id;
+        
+        // Vérifier les permissions : seuls admin/chef/director peuvent démarrer une pause pour un autre utilisateur
+        if ($targetUserId !== $user->id && !in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
         // Trouver le time entry actif pour cet utilisateur
-        $timeEntry = TimeEntry::where('user_id', $user->id)
+        $timeEntry = TimeEntry::where('user_id', $targetUserId)
             ->whereDate('date', Carbon::today())
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
+            ->orderBy('clock_in', 'desc') // Prendre le plus récent
             ->first();
 
         if (!$timeEntry) {
@@ -44,7 +58,7 @@ class BreakController extends Controller
 
         $break = WorkBreak::create([
             'time_entry_id' => $timeEntry->id,
-            'user_id' => $user->id,
+            'user_id' => $targetUserId,
             'start_break' => Carbon::now(),
         ]);
 
@@ -61,8 +75,21 @@ class BreakController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Trouver la pause active
-        $break = WorkBreak::where('user_id', $user->id)
+        $validated = $request->validate([
+            'user_id' => 'nullable|exists:users,id',
+        ]);
+
+        // Si un user_id est fourni et que l'utilisateur est admin/chef/director, utiliser cet user_id
+        // Sinon, utiliser l'utilisateur authentifié
+        $targetUserId = $validated['user_id'] ?? $user->id;
+        
+        // Vérifier les permissions : seuls admin/chef/director peuvent terminer une pause pour un autre utilisateur
+        if ($targetUserId !== $user->id && !in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        // Trouver la pause active pour cet utilisateur
+        $break = WorkBreak::where('user_id', $targetUserId)
             ->whereNotNull('start_break')
             ->whereNull('end_break')
             ->latest()
@@ -76,13 +103,13 @@ class BreakController extends Controller
         $break->duration_minutes = $break->calculateDuration();
         $break->save();
 
-        // Mettre à jour le time entry avec la durée totale de pause
+        // Mettre à jour le time entry avec la durée totale de pause (en minutes)
         $timeEntry = $break->timeEntry;
         $totalBreakMinutes = WorkBreak::where('time_entry_id', $timeEntry->id)
             ->whereNotNull('end_break')
             ->sum('duration_minutes');
         
-        $timeEntry->break_duration = $totalBreakMinutes / 60;
+        $timeEntry->break_duration = $totalBreakMinutes; // Stocker en minutes
         $timeEntry->hours_worked = $timeEntry->calculateHoursWorked();
         $timeEntry->save();
 

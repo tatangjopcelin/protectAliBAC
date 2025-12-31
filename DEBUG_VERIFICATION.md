@@ -76,3 +76,6 @@ SET email_verified_at = NOW()
 WHERE email_verified_at IS NULL;
 ```
 
+
+
+

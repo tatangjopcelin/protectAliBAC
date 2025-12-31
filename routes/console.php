@@ -24,3 +24,8 @@ Schedule::call(function () {
     $alertService->cleanOldAlerts(30);
 })->weeklyOn(0, '02:00')
   ->description('Nettoie les anciennes alertes lues (plus de 30 jours)');
+
+// Vérifier les limites d'heures supplémentaires toutes les 15 minutes
+Schedule::command('time-entries:check-overtime')
+    ->everyFifteenMinutes()
+    ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte');

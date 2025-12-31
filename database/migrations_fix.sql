@@ -25,3 +25,6 @@ CREATE TABLE IF NOT EXISTS `breaks` (
   CONSTRAINT `breaks_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+
+
+

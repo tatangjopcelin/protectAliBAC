@@ -46,6 +46,7 @@ class TimeEntry extends Model
 
     /**
      * Calcule les heures travaillées automatiquement
+     * Utilise les heures réelles travaillées (clock_in à clock_out) moins les pauses
      */
     public function calculateHoursWorked(): float
     {
@@ -59,9 +60,9 @@ class TimeEntry extends Model
         // Calculer le total des pauses (break_duration + pauses réelles)
         $totalBreakMinutes = 0;
         
-        // Ajouter break_duration si disponible (en heures, convertir en minutes)
+        // Ajouter break_duration si disponible (maintenant stocké en minutes)
         if ($this->break_duration) {
-            $totalBreakMinutes += $this->break_duration * 60;
+            $totalBreakMinutes += $this->break_duration;
         }
         
         // Ajouter toutes les pauses réelles
@@ -77,8 +78,12 @@ class TimeEntry extends Model
             }
         }
         
-        $breakHours = $totalBreakMinutes / 60;
-        return max(0, $end->diffInHours($start) - $breakHours);
+        // Calculer la différence en minutes pour avoir une précision exacte
+        $totalMinutes = $end->diffInMinutes($start);
+        $netMinutes = max(0, $totalMinutes - $totalBreakMinutes);
+        
+        // Convertir en heures avec 2 décimales
+        return round($netMinutes / 60, 2);
     }
 
     /**

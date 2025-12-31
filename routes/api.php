@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\ShoppingListController;
 use App\Http\Controllers\Api\ShoppingListItemController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\TimeEntryController;
+use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\AuthController;
 
 // Routes d'authentification (publiques)
@@ -128,6 +129,9 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('users', UserController::class);
     Route::put('/users/{id}/role', [UserController::class, 'updateRole']); // Modifier le rôle (Admin uniquement)
+    // Route sans paramètre doit être définie AVANT celle avec paramètre
+    Route::put('/users/overtime-limit/all', [UserController::class, 'updateOvertimeLimitForAll']); // Modifier la limite pour tous (Admin uniquement)
+    Route::put('/users/{id}/overtime-limit', [UserController::class, 'updateOvertimeLimit']); // Modifier la limite d'heures sup (Admin uniquement)
 });
 
 // Routes pour la liste d'achats (tous les utilisateurs authentifiés peuvent ajouter)
@@ -148,9 +152,13 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les plannings
     Route::get('/schedules/weekly', [ScheduleController::class, 'getWeeklySchedule']); // Planning hebdomadaire
     Route::get('/schedules/monthly', [ScheduleController::class, 'getMonthlySchedule']); // Planning mensuel
+    Route::put('/schedules/{id}/validate-request', [ScheduleController::class, 'validateRequest']); // Valider un planning "request"
     Route::apiResource('schedules', ScheduleController::class);
     
-    // Routes pour les pointages
+    // Routes pour les pointages (doivent être définies AVANT apiResource)
+    Route::post('/time-entries/send-clock-in-code', [TimeEntryController::class, 'sendClockInCode']); // Envoyer code de vérification
+    Route::post('/time-entries/clock-in-with-code', [TimeEntryController::class, 'clockInWithCode']); // Pointer avec code
+    Route::post('/time-entries/clock-out-for-user', [TimeEntryController::class, 'clockOutForUser']); // Pointer départ pour un utilisateur
     Route::post('/time-entries/clock-in', [TimeEntryController::class, 'clockIn']); // Pointer l'arrivée
     Route::post('/time-entries/clock-out', [TimeEntryController::class, 'clockOut']); // Pointer le départ
     Route::get('/time-entries/today', [TimeEntryController::class, 'getTodayEntry']); // Pointage du jour

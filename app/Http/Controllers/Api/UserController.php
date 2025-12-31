@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class UserController extends Controller
@@ -38,10 +39,26 @@ class UserController extends Controller
             $query->where('zone_id', $request->zone_id);
         }
 
+        // Vérifier si la colonne max_overtime_hours existe
+        $hasOvertimeColumn = \Schema::hasColumn('users', 'max_overtime_hours');
+        
+        $selectFields = ['id', 'name', 'email', 'role', 'zone_id', 'created_at'];
+        if ($hasOvertimeColumn) {
+            $selectFields[] = 'max_overtime_hours';
+        }
+        
         $users = $query->with('zone:id,name,type')
-            ->select('id', 'name', 'email', 'role', 'zone_id', 'created_at')
+            ->select($selectFields)
             ->orderBy('name')
             ->get();
+        
+        // Si la colonne n'existe pas encore, ajouter une valeur par défaut
+        if (!$hasOvertimeColumn) {
+            $users = $users->map(function ($user) {
+                $user->max_overtime_hours = 1.00;
+                return $user;
+            });
+        }
 
         return response()->json($users);
     }
@@ -64,6 +81,7 @@ class UserController extends Controller
             'email' => $user->email,
             'role' => $user->role,
             'zone_id' => $user->zone_id,
+            'max_overtime_hours' => $user->max_overtime_hours,
             'zone' => $user->zone ? [
                 'id' => $user->zone->id,
                 'name' => $user->zone->name,
@@ -119,6 +137,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
+                'max_overtime_hours' => $user->max_overtime_hours,
                 'zone' => $user->zone ? [
                     'id' => $user->zone->id,
                     'name' => $user->zone->name,
@@ -187,6 +206,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
+                'max_overtime_hours' => $user->max_overtime_hours,
                 'zone' => $user->zone ? [
                     'id' => $user->zone->id,
                     'name' => $user->zone->name,
@@ -262,5 +282,70 @@ class UserController extends Controller
         $user->delete();
 
         return response()->json(['message' => 'Utilisateur supprimé avec succès'], 200);
+    }
+
+    /**
+     * Met à jour la limite d'heures supplémentaires pour tous les utilisateurs
+     */
+    public function updateOvertimeLimitForAll(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seul l'admin peut modifier les limites d'heures supplémentaires
+        if (!$user->isAdmin()) {
+            return response()->json(['message' => 'Accès refusé. Seul l\'admin peut modifier les limites d\'heures supplémentaires.'], 403);
+        }
+
+        $validated = $request->validate([
+            'max_overtime_hours' => 'required|numeric|min:0|max:24',
+        ]);
+
+        User::whereNotNull('id')->update([
+            'max_overtime_hours' => $validated['max_overtime_hours']
+        ]);
+
+        return response()->json([
+            'message' => 'Limite d\'heures supplémentaires mise à jour pour tous les utilisateurs',
+            'max_overtime_hours' => $validated['max_overtime_hours'],
+            'users_updated' => User::count(),
+        ]);
+    }
+
+    /**
+     * Met à jour la limite d'heures supplémentaires pour un utilisateur spécifique
+     */
+    public function updateOvertimeLimit(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seul l'admin peut modifier les limites d'heures supplémentaires
+        if (!$user->isAdmin()) {
+            return response()->json(['message' => 'Accès refusé. Seul l\'admin peut modifier les limites d\'heures supplémentaires.'], 403);
+        }
+
+        $validated = $request->validate([
+            'max_overtime_hours' => 'required|numeric|min:0|max:24',
+        ]);
+
+        // Mettre à jour pour un utilisateur spécifique
+        $targetUser = User::findOrFail($id);
+        $targetUser->max_overtime_hours = $validated['max_overtime_hours'];
+        $targetUser->save();
+
+        return response()->json([
+            'message' => 'Limite d\'heures supplémentaires mise à jour',
+            'user' => [
+                'id' => $targetUser->id,
+                'name' => $targetUser->name,
+                'email' => $targetUser->email,
+                'max_overtime_hours' => $targetUser->max_overtime_hours,
+            ],
+        ]);
     }
 }

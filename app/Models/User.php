@@ -24,6 +24,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'role',
         'zone_id',
+        'max_overtime_hours',
+        'clock_in_code',
+        'clock_in_code_expires_at',
         'email_verified_at',
         'email_verification_code',
         'email_verification_code_expires_at',
@@ -49,6 +52,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'max_overtime_hours' => 'decimal:2',
+            'clock_in_code_expires_at' => 'datetime',
+            'email_verification_code_expires_at' => 'datetime',
         ];
     }
 

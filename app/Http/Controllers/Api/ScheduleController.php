@@ -41,7 +41,13 @@ class ScheduleController extends Controller
             $query->whereBetween('date', [$request->start_date, $request->end_date]);
         }
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            // Gérer plusieurs statuts séparés par des virgules
+            $statuses = explode(',', $request->status);
+            if (count($statuses) > 1) {
+                $query->whereIn('status', $statuses);
+            } else {
+                $query->where('status', $request->status);
+            }
         }
 
         // Tri par date
@@ -290,6 +296,41 @@ class ScheduleController extends Controller
         return response()->json([
             'month' => $month->format('Y-m'),
             'schedules' => $schedules
+        ]);
+    }
+
+    /**
+     * Valider un planning "request" (demande)
+     * Seuls admin, chef et directeur peuvent valider
+     */
+    public function validateRequest(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seuls admin, chef et directeur peuvent valider
+        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $schedule = Schedule::findOrFail($id);
+
+        // Vérifier que c'est bien un planning "request"
+        if ($schedule->status !== 'request') {
+            return response()->json([
+                'message' => 'Ce planning n\'est pas une demande en attente de validation'
+            ], 400);
+        }
+
+        // Changer le statut en "confirmed"
+        $schedule->status = 'confirmed';
+        $schedule->save();
+
+        return response()->json([
+            'message' => 'Planning validé avec succès. Les heures seront maintenant comptabilisées.',
+            'schedule' => $schedule->load(['user', 'creator'])
         ]);
     }
 }
