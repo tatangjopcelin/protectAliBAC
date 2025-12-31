@@ -30,6 +30,32 @@ class Schedule extends Model
     ];
     
     /**
+     * Formate la date pour l'API (évite les problèmes de fuseau horaire)
+     */
+    public function getFormattedDateAttribute(): string
+    {
+        if (!$this->attributes['date']) {
+            return '';
+        }
+        
+        // Utiliser la valeur brute de la date pour éviter les problèmes de fuseau horaire
+        $dateValue = $this->attributes['date'];
+        
+        // Si c'est déjà au format yyyy-MM-dd, le retourner
+        if (is_string($dateValue) && preg_match('/^\d{4}-\d{2}-\d{2}/', $dateValue)) {
+            return substr($dateValue, 0, 10);
+        }
+        
+        // Sinon, parser et formater
+        try {
+            $date = \Carbon\Carbon::parse($dateValue);
+            return $date->format('Y-m-d');
+        } catch (\Exception $e) {
+            return $dateValue;
+        }
+    }
+    
+    /**
      * Accesseur pour formater start_time en HH:mm
      */
     public function getStartTimeAttribute($value)

@@ -12,6 +12,32 @@ use Carbon\Carbon;
 class ScheduleController extends Controller
 {
     /**
+     * Formate la date d'un schedule pour éviter les problèmes de fuseau horaire
+     */
+    private function formatScheduleDate($schedule)
+    {
+        if ($schedule->date) {
+            $dateValue = $schedule->getAttributes()['date'] ?? $schedule->date;
+            if ($dateValue instanceof \Carbon\Carbon) {
+                $schedule->date = $dateValue->format('Y-m-d');
+            } elseif (is_string($dateValue)) {
+                // Si c'est une chaîne ISO, extraire juste la date
+                if (strpos($dateValue, 'T') !== false) {
+                    $schedule->date = substr($dateValue, 0, 10);
+                } elseif (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateValue)) {
+                    // Si ce n'est pas déjà au format yyyy-MM-dd, essayer de parser
+                    try {
+                        $date = Carbon::parse($dateValue);
+                        $schedule->date = $date->format('Y-m-d');
+                    } catch (\Exception $e) {
+                        // Garder la valeur originale si le parsing échoue
+                    }
+                }
+            }
+        }
+        return $schedule;
+    }
+    /**
      * Display a listing of schedules.
      * Tous les utilisateurs peuvent voir leur propre planning
      * Admin/chef/directeur peuvent voir tous les plannings
@@ -48,12 +74,21 @@ class ScheduleController extends Controller
             } else {
                 $query->where('status', $request->status);
             }
+        } else {
+            // Par défaut, exclure les plannings "cancelled" (refusés)
+            // Sauf si l'utilisateur demande explicitement de les voir
+            $query->where('status', '!=', 'cancelled');
         }
 
         // Tri par date
         $query->orderBy('date', 'asc')->orderBy('start_time', 'asc');
 
         $schedules = $query->get();
+        
+        // Formater les dates pour éviter les problèmes de fuseau horaire
+        $schedules->transform(function ($schedule) {
+            return $this->formatScheduleDate($schedule);
+        });
 
         return response()->json($schedules);
     }
@@ -126,7 +161,9 @@ class ScheduleController extends Controller
             'break_duration' => $schedule->break_duration
         ]);
 
-        return response()->json($schedule->load(['user', 'creator']), 201);
+        $schedule = $schedule->load(['user', 'creator']);
+        $this->formatScheduleDate($schedule);
+        return response()->json($schedule, 201);
     }
 
     /**
@@ -148,6 +185,7 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
+        $this->formatScheduleDate($schedule);
         return response()->json($schedule);
     }
 
@@ -200,7 +238,9 @@ class ScheduleController extends Controller
         }
         $schedule->update($updateData);
 
-        return response()->json($schedule->load(['user', 'creator']));
+        $schedule = $schedule->load(['user', 'creator']);
+        $this->formatScheduleDate($schedule);
+        return response()->json($schedule);
     }
 
     /**
