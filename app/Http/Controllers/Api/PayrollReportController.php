@@ -46,8 +46,13 @@ class PayrollReportController extends Controller
                     ->where('month', $month)
                     ->first();
 
+                // Si le token existe et est déjà confirmé, on skip cet employé
+                if ($existingToken && $existingToken->status === 'confirmed') {
+                    continue; // Ne pas envoyer d'email aux employés qui ont déjà confirmé
+                }
+
                 if ($existingToken) {
-                    // Réutiliser le token existant mais réinitialiser le statut pour permettre une nouvelle validation
+                    // Le token existe mais est "pending" ou "rejected", on le réinitialise
                     $existingToken->update([
                         'status' => 'pending',
                         'rejection_reason' => null,
