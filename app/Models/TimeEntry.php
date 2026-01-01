@@ -44,6 +44,11 @@ class TimeEntry extends Model
         return $this->hasMany(WorkBreak::class);
     }
 
+    public function corrections(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(TimeEntryCorrection::class);
+    }
+
     /**
      * Calcule les heures travaillées automatiquement
      * Utilise les heures réelles travaillées (clock_in à clock_out) moins les pauses

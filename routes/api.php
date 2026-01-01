@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\ShoppingListController;
 use App\Http\Controllers\Api\ShoppingListItemController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\TimeEntryController;
+use App\Http\Controllers\Api\TimeEntryCorrectionController;
 use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PayrollReportController;
@@ -166,6 +167,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/time-entries/user/{userId}', [TimeEntryController::class, 'getUserEntries']); // Historique des pointages
     Route::get('/time-entries/statistics', [TimeEntryController::class, 'getStatistics']); // Statistiques
     Route::apiResource('time-entries', TimeEntryController::class);
+    
+    // Routes pour les corrections de pointage
+    Route::apiResource('time-entry-corrections', TimeEntryCorrectionController::class);
     
     // Routes pour les pauses
     Route::post('/breaks/start', [BreakController::class, 'startBreak']); // Démarrer une pause
