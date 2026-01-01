@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\TimeEntryController;
 use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\PayrollReportController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -170,4 +171,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/breaks/start', [BreakController::class, 'startBreak']); // Démarrer une pause
     Route::post('/breaks/end', [BreakController::class, 'endBreak']); // Terminer une pause
     Route::get('/breaks/time-entry/{timeEntryId}', [BreakController::class, 'getBreaks']); // Obtenir les pauses d'un time entry
+    
+    // Routes pour la distribution des rapports de paie (admin uniquement)
+    Route::post('/payroll-reports/distribute', [PayrollReportController::class, 'distribute']); // Distribuer les rapports
+    Route::get('/payroll-reports/statuses', [PayrollReportController::class, 'getStatuses']); // Récupérer les statuts des rapports
 });
+
+// Routes publiques pour les rapports de paie (accessible via token)
+Route::get('/payroll-reports/token/{token}', [PayrollReportController::class, 'getByToken']); // Récupérer le rapport via token
+Route::post('/payroll-reports/token/{token}/confirm', [PayrollReportController::class, 'confirm']); // Confirmer le rapport
+Route::post('/payroll-reports/token/{token}/reject', [PayrollReportController::class, 'reject']); // Rejeter le rapport
