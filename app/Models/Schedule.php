@@ -10,6 +10,7 @@ class Schedule extends Model
 {
     protected $fillable = [
         'user_id',
+        'store_id',
         'date',
         'start_time',
         'end_time',
@@ -178,5 +179,10 @@ class Schedule extends Model
     public function timeEntry(): HasOne
     {
         return $this->hasOne(TimeEntry::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 }

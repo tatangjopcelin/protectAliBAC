@@ -21,7 +21,8 @@ class UserController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        $query = User::query();
+        $currentUser = $request->user();
+        $query = User::query()->where('store_id', $currentUser->store_id);
 
         if ($request->has('role')) {
             $query->where('role', $request->role);
@@ -68,12 +69,16 @@ class UserController extends Controller
      */
     public function show(string $id)
     {
-        $user = User::findOrFail($id);
+        $currentUser = request()->user();
         
         // Seul l'admin, le chef et le directeur peuvent voir les détails d'un utilisateur
-        if (!request()->user()?->isAdmin() && !request()->user()?->isChef() && !request()->user()?->isDirector()) {
+        if (!$currentUser?->isAdmin() && !$currentUser?->isChef() && !$currentUser?->isDirector()) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
 
         return response()->json([
             'id' => $user->id,
@@ -125,6 +130,7 @@ class UserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
+            'store_id' => $request->user()->store_id, // Utiliser le store_id de l'admin
             'zone_id' => $validated['zone_id'] ?? null,
         ]);
         $user->load('zone:id,name,type');
@@ -152,12 +158,16 @@ class UserController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $user = User::findOrFail($id);
-
+        $currentUser = $request->user();
+        
         // Seul l'admin, le chef et le directeur peuvent modifier des utilisateurs
-        if (!$request->user()?->isAdmin() && !$request->user()?->isChef() && !$request->user()?->isDirector()) {
+        if (!$currentUser?->isAdmin() && !$currentUser?->isChef() && !$currentUser?->isDirector()) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -221,14 +231,18 @@ class UserController extends Controller
      */
     public function updateRole(Request $request, string $id)
     {
-        $user = User::findOrFail($id);
-
+        $currentUser = $request->user();
+        
         // Seul l'admin peut modifier les rôles
-        if (!$request->user()?->isAdmin()) {
+        if (!$currentUser?->isAdmin()) {
             return response()->json([
                 'message' => 'Accès refusé. Seul l\'admin peut modifier le rôle d\'un utilisateur.'
             ], 403);
         }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
 
         $validated = $request->validate([
             'role' => [
@@ -265,12 +279,16 @@ class UserController extends Controller
      */
     public function destroy(string $id)
     {
-        $user = User::findOrFail($id);
-
+        $currentUser = request()->user();
+        
         // Seul l'admin peut supprimer des utilisateurs
-        if (!request()->user()?->isAdmin()) {
+        if (!$currentUser?->isAdmin()) {
             return response()->json(['message' => 'Accès refusé. Seul l\'admin peut supprimer des utilisateurs.'], 403);
         }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
 
         // Empêcher de supprimer soi-même
         if ($user->id === request()->user()?->id) {
@@ -303,14 +321,14 @@ class UserController extends Controller
             'max_overtime_hours' => 'required|numeric|min:0|max:24',
         ]);
 
-        User::whereNotNull('id')->update([
+        $updatedCount = User::where('store_id', $user->store_id)->update([
             'max_overtime_hours' => $validated['max_overtime_hours']
         ]);
 
         return response()->json([
             'message' => 'Limite d\'heures supplémentaires mise à jour pour tous les utilisateurs',
             'max_overtime_hours' => $validated['max_overtime_hours'],
-            'users_updated' => User::count(),
+            'users_updated' => $updatedCount,
         ]);
     }
 
@@ -333,8 +351,10 @@ class UserController extends Controller
             'max_overtime_hours' => 'required|numeric|min:0|max:24',
         ]);
 
-        // Mettre à jour pour un utilisateur spécifique
-        $targetUser = User::findOrFail($id);
+        // Mettre à jour pour un utilisateur spécifique du même établissement
+        $targetUser = User::where('id', $id)
+            ->where('store_id', $user->store_id)
+            ->firstOrFail();
         $targetUser->max_overtime_hours = $validated['max_overtime_hours'];
         $targetUser->save();
 

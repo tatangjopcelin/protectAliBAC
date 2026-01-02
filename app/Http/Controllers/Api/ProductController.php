@@ -34,10 +34,24 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Product::with(['category', 'supplier', 'zone.store'])->where('is_active', true);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $query = Product::with(['category', 'supplier', 'zone.store'])
+            ->where('is_active', true);
+
+        // Filtrer par établissement via la relation zone
+        if ($user->store_id) {
+            $query->whereHas('zone', function($q) use ($user) {
+                $q->where('store_id', $user->store_id);
+            });
+        }
 
         // Filtres
         if ($request->has('zone_id')) {
+            // Ajouter le filtre zone_id directement - le whereHas ci-dessus garantit déjà la sécurité
             $query->where('zone_id', $request->zone_id);
         }
         if ($request->has('category_id')) {
@@ -127,6 +141,21 @@ class ProductController extends Controller
             'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
         ]);
 
+        // Vérifier que la zone appartient au même établissement que l'utilisateur
+        $zone = \App\Models\Zone::find($validated['zone_id']);
+        if (!$zone) {
+            return response()->json([
+                'error' => 'Zone introuvable',
+                'message' => 'La zone sélectionnée n\'existe pas.'
+            ], 422);
+        }
+        if ($user->store_id && $zone->store_id !== $user->store_id) {
+            return response()->json([
+                'error' => 'Zone non accessible',
+                'message' => 'La zone sélectionnée n\'appartient pas à votre établissement.'
+            ], 403);
+        }
+
         // Vérifier l'unicité du code-barres (le QR code doit être unique et scanné depuis l'étiquette)
         $existing = Product::where('barcode', $validated['barcode'])->where('is_active', true)->first();
         if ($existing) {
@@ -200,13 +229,24 @@ class ProductController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         $product = Product::with(['category', 'supplier', 'zone.store', 'stockMovements', 'alerts'])
-            ->findOrFail($id);
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->where('id', $id)
+            ->firstOrFail();
         
         // Enregistrer la consultation dans la traçabilité
-        $this->recordTrace($product->id, 'viewed', request()->user()?->id, [
+        $this->recordTrace($product->id, 'viewed', $user->id, [
             'barcode' => $product->barcode
         ]);
         
@@ -223,7 +263,13 @@ class ProductController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
         
-        $product = Product::findOrFail($id);
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
         
         // Vérifier les permissions avec la Policy
         if (!(new \App\Policies\ProductPolicy())->update($user, $product)) {
@@ -251,6 +297,23 @@ class ProductController extends Controller
             'origin_country' => 'nullable|string|max:100',        // 4. Pays d'origine
             'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
         ]);
+
+        // Vérifier que la zone (si modifiée) appartient au même établissement que l'utilisateur
+        if (isset($validated['zone_id']) && $validated['zone_id'] != $product->zone_id) {
+            $zone = \App\Models\Zone::find($validated['zone_id']);
+            if (!$zone) {
+                return response()->json([
+                    'error' => 'Zone introuvable',
+                    'message' => 'La zone sélectionnée n\'existe pas.'
+                ], 422);
+            }
+            if ($user->store_id && $zone->store_id !== $user->store_id) {
+                return response()->json([
+                    'error' => 'Zone non accessible',
+                    'message' => 'La zone sélectionnée n\'appartient pas à votre établissement.'
+                ], 403);
+            }
+        }
 
         // Logger les données reçues pour debug
         \Log::info('Mise à jour produit', [
@@ -300,13 +363,18 @@ class ProductController extends Controller
      */
     public function destroy(Request $request, string $id)
     {
-        $product = Product::findOrFail($id);
         $user = $request->user();
-        
-        // Vérifier les permissions
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
         }
+        
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
         
         if (!(new \App\Policies\ProductPolicy())->delete($user, $product)) {
             return response()->json(['message' => 'Accès refusé'], 403);
@@ -328,14 +396,24 @@ class ProductController extends Controller
     /**
      * Produits expirant dans X jours
      */
-    public function expiring($days = 3)
+    public function expiring(Request $request, $days = 3)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         // Convertir en int si c'est un string
         $days = (int) $days;
         $date = Carbon::today()->addDays($days);
         $products = Product::where('is_active', true)
             ->where('expiration_date', '<=', $date)
             ->where('expiration_date', '>=', Carbon::today())
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->orderBy('expiration_date', 'asc')
             ->with(['category', 'zone'])
             ->get();
@@ -346,11 +424,21 @@ class ProductController extends Controller
     /**
      * Produits périmés
      */
-    public function expired()
+    public function expired(Request $request)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         $products = Product::where('is_active', true)
             ->where('expiration_date', '<', Carbon::today())
             ->where('quantity', '>', 0) // Seulement ceux qui ont encore du stock
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->orderBy('expiration_date', 'asc')
             ->with(['category', 'zone.store'])
             ->get();
@@ -363,13 +451,18 @@ class ProductController extends Controller
      */
     public function markAsExpired(Request $request, string $id)
     {
-        $product = Product::findOrFail($id);
-        
-        // Vérifier les permissions
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
         }
+        
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
         
         if (!(new \App\Policies\ProductPolicy())->markExpired($user, $product)) {
             return response()->json(['message' => 'Accès refusé'], 403);
@@ -436,13 +529,18 @@ class ProductController extends Controller
      */
     public function addStock(Request $request, string $id)
     {
-        $product = Product::findOrFail($id);
-        
-        // Vérifier les permissions
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
         }
+        
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
         
         if (!(new \App\Policies\ProductPolicy())->addStock($user, $product)) {
             return response()->json(['message' => 'Accès refusé'], 403);
@@ -567,13 +665,18 @@ class ProductController extends Controller
      */
     public function reduceStock(Request $request, string $id)
     {
-        $product = Product::findOrFail($id);
-        
-        // Vérifier les permissions
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
         }
+        
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
         
         if (!(new \App\Policies\ProductPolicy())->reduceStock($user, $product)) {
             return response()->json(['message' => 'Accès refusé'], 403);
@@ -915,9 +1018,20 @@ class ProductController extends Controller
     /**
      * Obtenir l'historique complet de traçabilité d'un produit
      */
-    public function traceHistory(string $id)
+    public function traceHistory(Request $request, string $id)
     {
-        $product = Product::findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
 
         $history = [
             'product' => $product->load(['category', 'supplier', 'zone.store']),

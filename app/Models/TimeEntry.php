@@ -10,6 +10,7 @@ class TimeEntry extends Model
 {
     protected $fillable = [
         'user_id',
+        'store_id',
         'schedule_id',
         'date',
         'clock_in',
@@ -47,6 +48,11 @@ class TimeEntry extends Model
     public function corrections(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(TimeEntryCorrection::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     /**

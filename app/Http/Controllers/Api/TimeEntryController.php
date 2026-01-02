@@ -16,7 +16,13 @@ class TimeEntryController extends Controller
      */
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = TimeEntry::with(['user', 'schedule', 'breaks']);
+
+        // Filtrer par établissement
+        if ($user && $user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
 
         // Filtres
         if ($request->has('user_id')) {
@@ -99,6 +105,7 @@ class TimeEntryController extends Controller
         // Créer un NOUVEAU pointage (pas updateOrCreate) pour permettre plusieurs pointages par jour
         $timeEntry = TimeEntry::create([
             'user_id' => $user->id,
+            'store_id' => $user->store_id, // Assigner automatiquement le store_id
             'date' => $today,
             'schedule_id' => $schedule?->id,
             'clock_in' => now(),
@@ -255,6 +262,11 @@ class TimeEntryController extends Controller
         $query = TimeEntry::with(['user', 'schedule', 'breaks'])
             ->where('user_id', $userId);
 
+        // Filtrer par établissement
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
+
         if ($request->has('start_date') && $request->has('end_date')) {
             $query->whereBetween('date', [$request->start_date, $request->end_date]);
         } else {
@@ -283,6 +295,11 @@ class TimeEntryController extends Controller
         }
 
         $timeEntry = TimeEntry::findOrFail($id);
+
+        // Vérifier que le pointage appartient au même établissement
+        if ($user->store_id && $timeEntry->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
 
         $validated = $request->validate([
             'clock_in' => 'sometimes|date',
@@ -330,8 +347,14 @@ class TimeEntryController extends Controller
 
         $timeEntries = TimeEntry::where('user_id', $userId)
             ->whereBetween('date', [$startDate, $endDate])
-            ->with('schedule')
-            ->get();
+            ->with('schedule');
+
+        // Filtrer par établissement
+        if ($user->store_id) {
+            $timeEntries->where('store_id', $user->store_id);
+        }
+
+        $timeEntries = $timeEntries->get();
 
         // Ne compter que les heures des plannings validés (confirmed) ou sans planning
         // Les plannings "request" ne sont pas comptabilisés jusqu'à validation
@@ -761,6 +784,7 @@ class TimeEntryController extends Controller
                 
                 $requestSchedule = Schedule::create([
                     'user_id' => $targetUser->id,
+                    'store_id' => $targetUser->store_id, // Assigner automatiquement le store_id
                     'date' => $today,
                     'start_time' => $startTime,
                     'end_time' => $defaultEndTime,
@@ -779,6 +803,7 @@ class TimeEntryController extends Controller
         // Créer un NOUVEAU pointage (pas updateOrCreate) pour permettre plusieurs pointages par jour
         $timeEntry = TimeEntry::create([
             'user_id' => $targetUser->id,
+            'store_id' => $targetUser->store_id, // Assigner automatiquement le store_id
             'date' => $today,
             'schedule_id' => $scheduleId,
             'clock_in' => $clockInTime,
@@ -916,6 +941,7 @@ class TimeEntryController extends Controller
                     
                     $requestSchedule = Schedule::create([
                         'user_id' => $targetUser->id,
+                        'store_id' => $targetUser->store_id, // Assigner automatiquement le store_id
                         'date' => $today,
                         'start_time' => $startTime,
                         'end_time' => $endTime,

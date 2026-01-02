@@ -130,10 +130,19 @@ class AlertService
      */
     private function createAlert(Product $product, string $type, string $severity, string $message): void
     {
+        // Récupérer le store_id du produit via sa zone
+        $storeId = $product->zone?->store_id;
+        if (!$storeId) {
+            // Si le produit n'a pas de zone ou la zone n'a pas de store_id, on ne peut pas créer l'alerte
+            \Log::warning("Impossible de créer une alerte pour le produit {$product->id} : pas de store_id associé");
+            return;
+        }
+
         // Pour les alertes de péremption, vérifier s'il existe déjà une alerte non lue
         // et la mettre à jour plutôt que d'en créer une nouvelle
         if ($type === 'expiration' || $type === 'expired') {
             $existingAlert = Alert::where('product_id', $product->id)
+                ->where('store_id', $storeId) // Filtrer par store_id pour la sécurité
                 ->whereIn('type', ['expiration', 'expired'])
                 ->where('is_read', false)
                 ->first();
@@ -150,6 +159,7 @@ class AlertService
         } else {
             // Pour les autres types d'alertes, vérifier s'il existe une alerte non lue du même type
             $existingAlert = Alert::where('product_id', $product->id)
+                ->where('store_id', $storeId) // Filtrer par store_id pour la sécurité
                 ->where('type', $type)
                 ->where('is_read', false)
                 ->first();
@@ -164,9 +174,10 @@ class AlertService
             }
         }
 
-        // Créer une nouvelle alerte
+        // Créer une nouvelle alerte avec le store_id
         $alert = Alert::create([
             'product_id' => $product->id,
+            'store_id' => $storeId, // Ajouter le store_id pour la sécurité multi-establishment
             'type' => $type,
             'severity' => $severity,
             'message' => $message,

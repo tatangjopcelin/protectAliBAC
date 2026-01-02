@@ -57,6 +57,7 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
+                'store_id' => $user->store_id,
             ],
             'token' => $token,
         ]);
@@ -79,11 +80,22 @@ class AuthController extends Controller
     {
         try {
             $validated = $request->validate([
+                'registration_type' => 'required|string|in:create_store,join_store',
+                
+                // Champs utilisateur
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255',
                 'password' => 'required|string|min:8|confirmed',
                 'role' => 'nullable|string|in:admin,chef,cook,storekeeper,accountant,butcher,server,director',
                 'zone_id' => 'nullable|integer|exists:zones,id',
+                
+                // Champs pour création d'établissement
+                'store_name' => 'required_if:registration_type,create_store|string|max:255',
+                'store_address' => 'nullable|string|max:500',
+                'store_phone' => 'nullable|string|max:20',
+                
+                // Code pour rejoindre un établissement
+                'establishment_code' => 'required_if:registration_type,join_store|string|size:4|exists:stores,establishment_code',
             ]);
 
             // Vérifier que l'email n'existe pas dans users OU pending_registrations
@@ -99,22 +111,44 @@ class AuthController extends Controller
                 ], 422);
             }
 
-            // Générer un code de vérification à 6 chiffres
+            // Si join_store, vérifier que le code existe
+            if ($validated['registration_type'] === 'join_store') {
+                $store = \App\Models\Store::where('establishment_code', $validated['establishment_code'])->first();
+                if (!$store) {
+                    return response()->json([
+                        'message' => 'Erreur de validation',
+                        'errors' => [
+                            'establishment_code' => ['Code d\'établissement invalide.']
+                        ]
+                    ], 422);
+                }
+            }
+
+            // Générer code de vérification email
             $verificationCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
             
-            // Stocker temporairement dans pending_registrations (pas encore créé en base users)
+            // Déterminer le rôle
+            $role = $validated['registration_type'] === 'create_store' 
+                ? 'admin' 
+                : ($validated['role'] ?? 'cook');
+            
+            // Stocker dans pending_registrations
             $pendingRegistration = PendingRegistration::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
-                'password' => $validated['password'], // Hashé automatiquement grâce au cast
-                'role' => $validated['role'] ?? 'cook',
-                'zone_id' => isset($validated['zone_id']) && $validated['zone_id'] > 0 ? $validated['zone_id'] : null,
+                'password' => $validated['password'],
+                'role' => $role,
+                'zone_id' => $validated['zone_id'] ?? null,
                 'email_verification_code' => $verificationCode,
                 'email_verification_code_expires_at' => Carbon::now()->addMinutes(15),
+                'registration_type' => $validated['registration_type'],
+                'store_name' => $validated['store_name'] ?? null,
+                'store_address' => $validated['store_address'] ?? null,
+                'store_phone' => $validated['store_phone'] ?? null,
+                'establishment_code' => $validated['establishment_code'] ?? null,
             ]);
 
-            // Envoyer l'email de vérification avec le code
-            // Créer un objet User temporaire pour utiliser la notification
+            // Envoyer email de vérification
             $tempUser = new User();
             $tempUser->name = $pendingRegistration->name;
             $tempUser->email = $pendingRegistration->email;
@@ -122,7 +156,7 @@ class AuthController extends Controller
             $tempUser->sendEmailVerificationNotification();
 
             return response()->json([
-                'message' => 'Un code de vérification a été envoyé à votre email. Veuillez le vérifier pour finaliser votre inscription.',
+                'message' => 'Un code de vérification a été envoyé à votre email.',
                 'email_sent' => true,
                 'email' => $pendingRegistration->email,
             ], 201);
@@ -211,21 +245,70 @@ class AuthController extends Controller
                 ], 400);
             }
 
-            // Créer l'utilisateur dans la table users (maintenant que l'email est vérifié)
+            // Créer l'utilisateur et l'établissement si nécessaire
             try {
-                $user = User::create([
-                    'name' => $pendingRegistration->name,
-                    'email' => $pendingRegistration->email,
-                    'password' => $pendingRegistration->password, // Déjà hashé
-                    'role' => $pendingRegistration->role,
-                    'zone_id' => $pendingRegistration->zone_id,
-                    'email_verified_at' => now(), // Marquer comme vérifié immédiatement
-                ]);
+                $user = null;
+                
+                if ($pendingRegistration->registration_type === 'create_store') {
+                    // Créer l'établissement
+                    $establishmentCode = \App\Models\Store::generateEstablishmentCode();
+                    
+                    $store = \App\Models\Store::create([
+                        'name' => $pendingRegistration->store_name,
+                        'address' => $pendingRegistration->store_address,
+                        'phone' => $pendingRegistration->store_phone,
+                        'establishment_code' => $establishmentCode,
+                        'is_active' => true,
+                    ]);
+                    
+                    // Créer l'utilisateur admin
+                    $user = User::create([
+                        'name' => $pendingRegistration->name,
+                        'email' => $pendingRegistration->email,
+                        'password' => $pendingRegistration->password,
+                        'role' => 'admin',
+                        'store_id' => $store->id,
+                        'email_verified_at' => now(),
+                    ]);
+                    
+                    // Mettre à jour created_by de l'établissement
+                    $store->created_by = $user->id;
+                    $store->save();
+                    
+                    // Envoyer le code d'établissement par email
+                    $user->notify(new \App\Notifications\EstablishmentCodeNotification(
+                        $store->name,
+                        $establishmentCode
+                    ));
+                    
+                } else {
+                    // Rejoindre un établissement existant
+                    $store = \App\Models\Store::where('establishment_code', $pendingRegistration->establishment_code)->first();
+                    
+                    if (!$store) {
+                        return response()->json([
+                            'message' => 'Code d\'établissement invalide',
+                            'verified' => false,
+                        ], 400);
+                    }
+                    
+                    // Créer l'utilisateur employé
+                    $user = User::create([
+                        'name' => $pendingRegistration->name,
+                        'email' => $pendingRegistration->email,
+                        'password' => $pendingRegistration->password,
+                        'role' => $pendingRegistration->role ?? 'cook',
+                        'store_id' => $store->id,
+                        'zone_id' => $pendingRegistration->zone_id,
+                        'email_verified_at' => now(),
+                    ]);
+                }
 
                 Log::info('Compte créé après vérification', [
                     'user_id' => $user->id,
                     'email' => $user->email,
-                    'email_verified_at' => $user->email_verified_at,
+                    'store_id' => $user->store_id,
+                    'registration_type' => $pendingRegistration->registration_type,
                 ]);
 
                 // Supprimer l'enregistrement temporaire
@@ -239,7 +322,7 @@ class AuthController extends Controller
             }
 
             return response()->json([
-                'message' => 'Email vérifié avec succès. Votre compte a été créé. Vous pouvez maintenant vous connecter.',
+                'message' => 'Email vérifié avec succès. Votre compte a été créé.',
                 'verified' => true,
                 'user' => [
                     'id' => $user->id,
@@ -328,14 +411,20 @@ class AuthController extends Controller
      */
     public function user(Request $request)
     {
-        $user = $request->user();
+        $user = $request->user()->load('store');
         return response()->json([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
             'zone_id' => $user->zone_id,
+            'store_id' => $user->store_id,
             'email_verified' => $user->hasVerifiedEmail(),
+            'store' => $user->store ? [
+                'id' => $user->store->id,
+                'name' => $user->store->name,
+                'establishment_code' => $user->store->establishment_code,
+            ] : null,
         ]);
     }
 }

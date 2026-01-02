@@ -12,6 +12,7 @@ class PayrollReportToken extends Model
 
     protected $fillable = [
         'user_id',
+        'store_id',
         'token',
         'month',
         'status',
@@ -33,6 +34,14 @@ class PayrollReportToken extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Relation avec l'établissement
+     */
+    public function store()
+    {
+        return $this->belongsTo(Store::class);
     }
 
     /**

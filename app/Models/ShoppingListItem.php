@@ -17,6 +17,7 @@ class ShoppingListItem extends Model
         'status',
         'added_by', // Créateur de l'item
         'ordered_by',
+        'store_id',
         'notes',
         'ordered_at',
         'received_at',
@@ -46,6 +47,11 @@ class ShoppingListItem extends Model
     public function orderedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'ordered_by');
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     /**

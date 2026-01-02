@@ -51,6 +51,11 @@ class ScheduleController extends Controller
 
         $query = Schedule::with(['user', 'creator']);
 
+        // Filtrer par établissement
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
+
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
         if (!in_array($user->role, ['admin', 'chef', 'director'])) {
             $query->where('user_id', $user->id);
@@ -141,8 +146,15 @@ class ScheduleController extends Controller
             $breakDuration = $validated['break_duration'];
         }
 
+        // Vérifier que l'utilisateur cible appartient au même établissement
+        $targetUser = User::findOrFail($validated['user_id']);
+        if ($user->store_id && $targetUser->store_id !== $user->store_id) {
+            return response()->json(['message' => 'L\'utilisateur n\'appartient pas à votre établissement'], 403);
+        }
+
         $schedule = Schedule::create([
             'user_id' => $validated['user_id'],
+            'store_id' => $user->store_id, // Assigner automatiquement le store_id de l'admin
             'date' => $validated['date'],
             'start_time' => $validated['start_time'],
             'end_time' => $validated['end_time'],
@@ -180,6 +192,11 @@ class ScheduleController extends Controller
 
         $schedule = Schedule::with(['user', 'creator', 'timeEntry'])->findOrFail($id);
 
+        // Vérifier que le planning appartient au même établissement
+        if ($user->store_id && $schedule->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
         if (!in_array($user->role, ['admin', 'chef', 'director']) && $schedule->user_id !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
@@ -205,6 +222,11 @@ class ScheduleController extends Controller
         }
 
         $schedule = Schedule::findOrFail($id);
+
+        // Vérifier que le planning appartient au même établissement
+        if ($user->store_id && $schedule->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
 
         $validated = $request->validate([
             'user_id' => 'sometimes|exists:users,id',
@@ -259,6 +281,12 @@ class ScheduleController extends Controller
         }
 
         $schedule = Schedule::findOrFail($id);
+
+        // Vérifier que le planning appartient au même établissement
+        if ($user->store_id && $schedule->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
         $schedule->delete();
 
         return response()->json(['message' => 'Planning supprimé'], 200);
@@ -283,6 +311,11 @@ class ScheduleController extends Controller
 
         $query = Schedule::with(['user', 'creator'])
             ->whereBetween('date', [$weekStart, $weekEnd]);
+
+        // Filtrer par établissement
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
 
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
         if (!in_array($user->role, ['admin', 'chef', 'director'])) {

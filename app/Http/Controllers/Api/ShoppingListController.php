@@ -15,7 +15,21 @@ class ShoppingListController extends Controller
      */
     public function index(Request $request)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         $query = ShoppingListItem::with(['category', 'product', 'addedBy:id,name', 'orderedBy:id,name']);
+
+        // Filtrer par établissement de l'utilisateur connecté (obligatoire)
+        if ($user->store_id) {
+            // Filtrer directement par store_id (plus performant maintenant que la colonne existe)
+            $query->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucun résultat pour la sécurité
+            $query->whereRaw('1 = 0');
+        }
 
         // Filtres
         if ($request->has('status')) {
@@ -47,10 +61,22 @@ class ShoppingListController extends Controller
     /**
      * Affiche un item spécifique
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         $item = ShoppingListItem::with(['category', 'product', 'addedBy:id,name', 'orderedBy:id,name'])
-            ->findOrFail($id);
+            ->where('id', $id);
+
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        }
+
+        $item = $item->firstOrFail();
 
         return response()->json($item);
     }
@@ -74,6 +100,11 @@ class ShoppingListController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
         $item = ShoppingListItem::create([
             'name' => $validated['name'],
             'quantity' => $validated['quantity'],
@@ -82,7 +113,8 @@ class ShoppingListController extends Controller
             'product_id' => $validated['product_id'] ?? null,
             'priority' => $validated['priority'] ?? 'medium',
             'status' => 'pending',
-            'added_by' => $request->user()?->id,
+            'added_by' => $user->id,
+            'store_id' => $user->store_id,
             'notes' => $validated['notes'] ?? null,
         ]);
 
@@ -94,7 +126,19 @@ class ShoppingListController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $item = ShoppingListItem::findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $item = ShoppingListItem::where('id', $id);
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        }
+        
+        $item = $item->firstOrFail();
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
@@ -115,7 +159,7 @@ class ShoppingListController extends Controller
 
         // Si le statut passe à "ordered", enregistrer qui a commandé et quand
         if (isset($validated['status']) && $validated['status'] === 'ordered' && $item->status !== 'ordered') {
-            $validated['ordered_by'] = $request->user()?->id;
+            $validated['ordered_by'] = $user->id;
             $validated['ordered_at'] = Carbon::now();
         }
 
@@ -145,7 +189,19 @@ class ShoppingListController extends Controller
      */
     public function markAsOrdered(Request $request, string $id)
     {
-        $item = ShoppingListItem::findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $item = ShoppingListItem::where('id', $id);
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        }
+        
+        $item = $item->firstOrFail();
 
         if ($item->status === 'received') {
             return response()->json([
@@ -155,7 +211,7 @@ class ShoppingListController extends Controller
 
         $item->update([
             'status' => 'ordered',
-            'ordered_by' => $request->user()?->id,
+            'ordered_by' => $user->id,
             'ordered_at' => Carbon::now(),
         ]);
 
@@ -170,7 +226,19 @@ class ShoppingListController extends Controller
      */
     public function markAsReceived(Request $request, string $id)
     {
-        $item = ShoppingListItem::findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $item = ShoppingListItem::where('id', $id);
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        }
+        
+        $item = $item->firstOrFail();
 
         if ($item->status === 'pending') {
             return response()->json([
@@ -194,7 +262,19 @@ class ShoppingListController extends Controller
      */
     public function cancel(Request $request, string $id)
     {
-        $item = ShoppingListItem::findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $item = ShoppingListItem::where('id', $id);
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        }
+        
+        $item = $item->firstOrFail();
 
         if ($item->status === 'received') {
             return response()->json([
@@ -215,15 +295,27 @@ class ShoppingListController extends Controller
     /**
      * Statistiques de la liste d'achats
      */
-    public function stats()
+    public function stats(Request $request)
     {
-        $total = ShoppingListItem::count();
-        $pending = ShoppingListItem::where('status', 'pending')->count();
-        $ordered = ShoppingListItem::where('status', 'ordered')->count();
-        $received = ShoppingListItem::where('status', 'received')->count();
-        $cancelled = ShoppingListItem::where('status', 'cancelled')->count();
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
 
-        $byPriority = ShoppingListItem::selectRaw('priority, COUNT(*) as count')
+        $query = ShoppingListItem::query();
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
+
+        $total = (clone $query)->count();
+        $pending = (clone $query)->where('status', 'pending')->count();
+        $ordered = (clone $query)->where('status', 'ordered')->count();
+        $received = (clone $query)->where('status', 'received')->count();
+        $cancelled = (clone $query)->where('status', 'cancelled')->count();
+
+        $byPriority = (clone $query)->selectRaw('priority, COUNT(*) as count')
             ->groupBy('priority')
             ->get()
             ->pluck('count', 'priority');

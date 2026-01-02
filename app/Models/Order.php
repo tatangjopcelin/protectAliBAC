@@ -10,6 +10,7 @@ class Order extends Model
 {
     protected $fillable = [
         'supplier_id',
+        'store_id',
         'user_id',
         'order_number',
         'status',
@@ -40,5 +41,10 @@ class Order extends Model
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 }

@@ -9,6 +9,7 @@ class Notification extends Model
 {
     protected $fillable = [
         'user_id',
+        'store_id',
         'type',
         'channel',
         'title',
@@ -29,5 +30,10 @@ class Notification extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 }

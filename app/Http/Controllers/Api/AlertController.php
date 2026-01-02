@@ -17,6 +17,14 @@ class AlertController extends Controller
         }
         
         $query = Alert::with('product');
+        
+        // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune alerte pour la sécurité
+            $query->whereRaw('1 = 0');
+        }
 
         if ($request->has('is_read')) {
             $query->where('is_read', $request->boolean('is_read'));
@@ -38,9 +46,18 @@ class AlertController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
         
-        $alerts = Alert::with('product')
-            ->where('is_read', false)
-            ->orderBy('severity', 'desc')
+        $query = Alert::with('product')
+            ->where('is_read', false);
+        
+        // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune alerte pour la sécurité
+            $query->whereRaw('1 = 0');
+        }
+        
+        $alerts = $query->orderBy('severity', 'desc')
             ->orderBy('created_at', 'desc')
             ->get();
 
@@ -49,10 +66,21 @@ class AlertController extends Controller
 
     public function markAsRead(string $id, Request $request)
     {
-        $alert = Alert::findOrFail($id);
         $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
         
-        if (!$user || !(new AlertPolicy())->markAsRead($user, $alert)) {
+        $alert = Alert::where('id', $id);
+        if ($user->store_id) {
+            $alert->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune alerte pour la sécurité
+            $alert->whereRaw('1 = 0');
+        }
+        $alert = $alert->firstOrFail();
+        
+        if (!(new AlertPolicy())->markAsRead($user, $alert)) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
         
@@ -63,6 +91,20 @@ class AlertController extends Controller
 
     public function show(string $id)
     {
-        return response()->json(Alert::with('product')->findOrFail($id));
+        $user = request()->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        $alert = Alert::with('product')->where('id', $id);
+        if ($user->store_id) {
+            $alert->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune alerte pour la sécurité
+            $alert->whereRaw('1 = 0');
+        }
+        $alert = $alert->firstOrFail();
+        
+        return response()->json($alert);
     }
 }

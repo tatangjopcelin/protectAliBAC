@@ -9,6 +9,7 @@ class StockMovement extends Model
 {
     protected $fillable = [
         'product_id',
+        'store_id',
         'user_id',
         'type',
         'quantity',
@@ -45,5 +46,10 @@ class StockMovement extends Model
     public function recipe(): BelongsTo
     {
         return $this->belongsTo(Recipe::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 }

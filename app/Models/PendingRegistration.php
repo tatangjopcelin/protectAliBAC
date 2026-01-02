@@ -18,6 +18,11 @@ class PendingRegistration extends Model
         'zone_id',
         'email_verification_code',
         'email_verification_code_expires_at',
+        'registration_type', // 'create_store' ou 'join_store'
+        'store_name',
+        'store_address',
+        'store_phone',
+        'establishment_code',
     ];
 
     protected $casts = [

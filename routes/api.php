@@ -41,13 +41,10 @@ Route::apiResource('stores', StoreController::class);
 Route::apiResource('categories', CategoryController::class);
 Route::apiResource('suppliers', SupplierController::class);
 
-// Routes pour les zones
-// GET est public (pour permettre la sélection lors de l'inscription)
-Route::get('/zones', [ZoneController::class, 'index']);
-Route::get('/zones/{id}', [ZoneController::class, 'show']);
-
-// Routes protégées pour les zones (seul l'admin peut créer/modifier)
+// Routes pour les zones (protégées par authentification pour la sécurité multi-establishment)
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/zones', [ZoneController::class, 'index']);
+    Route::get('/zones/{id}', [ZoneController::class, 'show']);
     Route::post('/zones/{id}/update-temperature', [ZoneController::class, 'updateTemperature']); // Mettre à jour la température d'une zone
     Route::post('/zones', [ZoneController::class, 'store']);
     Route::put('/zones/{id}', [ZoneController::class, 'update']);

@@ -10,22 +10,28 @@ class ZoneController extends Controller
 {
     /**
      * Display a listing of the resource.
-     * Accessible publiquement pour permettre la sélection lors de l'inscription.
+     * Nécessite une authentification et filtre par établissement.
      */
     public function index(Request $request)
     {
         $user = $request->user();
         
-        $query = Zone::with('store');
-        
-        // Filtrer par magasin si spécifié
-        if ($request->has('store_id')) {
-            $query->where('store_id', $request->store_id);
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
         }
         
-        // Si l'utilisateur n'est pas authentifié ou n'est pas admin, 
-        // afficher seulement les zones actives
-        if (!$user || !$user->isAdmin()) {
+        $query = Zone::with('store');
+        
+        // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune zone pour la sécurité
+            $query->whereRaw('1 = 0');
+        }
+        
+        // Si l'utilisateur n'est pas admin, afficher seulement les zones actives
+        if (!$user->isAdmin()) {
             $query->where('is_active', true);
         }
 
@@ -52,7 +58,6 @@ class ZoneController extends Controller
         }
 
         $validated = $request->validate([
-            'store_id' => 'required|exists:stores,id',
             'name' => 'required|string|max:255',
             'type' => 'nullable|string|max:255',
             'description' => 'nullable|string',
@@ -62,6 +67,18 @@ class ZoneController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
+        $validated['store_id'] = $user->store_id; // Forcer le store_id de l'utilisateur
+        
+        // Nettoyer les données : convertir les chaînes vides en null pour les champs nullable
+        foreach (['type', 'description', 'shelf', 'bin'] as $field) {
+            if (isset($validated[$field]) && $validated[$field] === '') {
+                $validated[$field] = null;
+            }
+        }
+        if (isset($validated['temperature']) && ($validated['temperature'] === '' || $validated['temperature'] === null)) {
+            $validated['temperature'] = null;
+        }
+        
         $zone = Zone::create($validated);
         $zone->load('store');
 
@@ -73,19 +90,36 @@ class ZoneController extends Controller
 
     /**
      * Display the specified resource.
-     * Accessible publiquement pour permettre la consultation lors de l'inscription.
+     * Nécessite une authentification et filtre par établissement.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        $zone = Zone::with('store')->findOrFail($id);
+        $user = $request->user();
         
-        // Si l'utilisateur n'est pas authentifié ou n'est pas admin,
-        // vérifier que la zone est active
-        $user = request()->user();
-        if ((!$user || !$user->isAdmin()) && !$zone->is_active) {
-            return response()->json([
-                'message' => 'Zone non disponible'
-            ], 404);
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        
+        $zone = Zone::with('store')
+            ->where('id', $id);
+        
+        // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
+        if ($user->store_id) {
+            $zone->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune zone pour la sécurité
+            $zone->whereRaw('1 = 0');
+        }
+        
+        $zone = $zone->firstOrFail();
+        
+        // Si l'utilisateur n'est pas admin, vérifier que la zone est active
+        if (!$user->isAdmin()) {
+            if (!$zone->is_active) {
+                return response()->json([
+                    'message' => 'Zone non disponible'
+                ], 404);
+            }
         }
         
         return response()->json($zone);
@@ -109,10 +143,16 @@ class ZoneController extends Controller
             ], 403);
         }
 
-        $zone = Zone::findOrFail($id);
+        // Filtrer par établissement de l'utilisateur connecté (sécurité)
+        $zone = Zone::where('id', $id);
+        if ($user->store_id) {
+            $zone->where('store_id', $user->store_id);
+        } else {
+            $zone->whereRaw('1 = 0');
+        }
+        $zone = $zone->firstOrFail();
 
         $validated = $request->validate([
-            'store_id' => 'sometimes|exists:stores,id',
             'name' => 'sometimes|string|max:255',
             'type' => 'nullable|string|max:255',
             'description' => 'nullable|string',
@@ -122,6 +162,10 @@ class ZoneController extends Controller
             'is_active' => 'nullable|boolean',
         ]);
 
+        // Ne pas permettre de changer le store_id
+        if (isset($validated['store_id'])) {
+            unset($validated['store_id']);
+        }
         $zone->update($validated);
         $zone->load('store');
 
@@ -149,7 +193,14 @@ class ZoneController extends Controller
             ], 403);
         }
 
-        $zone = Zone::findOrFail($id);
+        $zone = Zone::where('id', $id);
+        if ($user->store_id) {
+            $zone->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune zone pour la sécurité
+            $zone->whereRaw('1 = 0');
+        }
+        $zone = $zone->firstOrFail();
 
         // Vérifier si la zone contient des produits
         if ($zone->products()->count() > 0) {
@@ -176,7 +227,14 @@ class ZoneController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        $zone = Zone::findOrFail($id);
+        $zone = Zone::where('id', $id);
+        if ($user->store_id) {
+            $zone->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucune zone pour la sécurité
+            $zone->whereRaw('1 = 0');
+        }
+        $zone = $zone->firstOrFail();
 
         $validated = $request->validate([
             'temperature' => 'required|numeric',

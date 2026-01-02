@@ -33,8 +33,12 @@ class PayrollReportController extends Controller
         $monthStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
         $monthEnd = Carbon::createFromFormat('Y-m', $month)->endOfMonth();
 
-        // Récupérer tous les employés (sauf admin)
-        $employees = User::where('role', '!=', 'admin')->get();
+        // Récupérer tous les employés du même établissement (sauf admin)
+        $employeesQuery = User::where('role', '!=', 'admin');
+        if ($user->store_id) {
+            $employeesQuery->where('store_id', $user->store_id);
+        }
+        $employees = $employeesQuery->get();
 
         $sentCount = 0;
         $errors = [];
@@ -65,6 +69,7 @@ class PayrollReportController extends Controller
                     // Créer un nouveau token
                     $token = PayrollReportToken::create([
                         'user_id' => $employee->id,
+                        'store_id' => $employee->store_id, // Assigner automatiquement le store_id
                         'token' => PayrollReportToken::generateToken(),
                         'month' => $month,
                         'status' => 'pending',
@@ -277,10 +282,13 @@ class PayrollReportController extends Controller
 
         $month = $request->month;
 
-        // Récupérer tous les tokens pour ce mois
-        $tokens = PayrollReportToken::where('month', $month)
-            ->with('user')
-            ->get();
+        // Récupérer tous les tokens pour ce mois (du même établissement)
+        $tokensQuery = PayrollReportToken::where('month', $month)
+            ->with('user');
+        if ($user->store_id) {
+            $tokensQuery->where('store_id', $user->store_id);
+        }
+        $tokens = $tokensQuery->get();
 
         // Formater les résultats par user_id
         $statusesByUser = [];

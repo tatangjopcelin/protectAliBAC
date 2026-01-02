@@ -23,6 +23,14 @@ class ShoppingListItemController extends Controller
 
         $query = ShoppingListItem::with(['addedBy', 'category', 'product']);
 
+        // Filtrer par établissement de l'utilisateur connecté (obligatoire)
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        } else {
+            // Si l'utilisateur n'a pas de store_id, ne retourner aucun résultat pour la sécurité
+            $query->whereRaw('1 = 0');
+        }
+
         // Filtrer par statut si spécifié
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -84,6 +92,7 @@ class ShoppingListItemController extends Controller
             'priority' => $validated['priority'] ?? 'medium',
             'status' => 'pending',
             'added_by' => $user->id,
+            'store_id' => $user->store_id,
             'notes' => $validated['notes'] ?? null,
         ]);
 
@@ -101,9 +110,23 @@ class ShoppingListItemController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        $item = ShoppingListItem::with(['addedBy', 'category', 'product'])->findOrFail($id);
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $item = ShoppingListItem::with(['addedBy', 'category', 'product']);
+        
+        // Filtrer par établissement de l'utilisateur connecté
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        } else {
+            $item->whereRaw('1 = 0');
+        }
+        
+        $item = $item->findOrFail($id);
         return response()->json($item);
     }
 
@@ -118,7 +141,14 @@ class ShoppingListItemController extends Controller
                 return response()->json(['message' => 'Non authentifié'], 401);
             }
 
-            $item = ShoppingListItem::findOrFail($id);
+            // Filtrer par établissement de l'utilisateur connecté
+            $item = ShoppingListItem::query();
+            if ($user->store_id) {
+                $item->where('store_id', $user->store_id);
+            } else {
+                $item->whereRaw('1 = 0');
+            }
+            $item = $item->findOrFail($id);
             
             // Vérifier les permissions avec la Policy
             $policy = new \App\Policies\ShoppingListItemPolicy();
@@ -185,7 +215,14 @@ class ShoppingListItemController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        $item = ShoppingListItem::findOrFail($id);
+        // Filtrer par établissement de l'utilisateur connecté
+        $item = ShoppingListItem::query();
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        } else {
+            $item->whereRaw('1 = 0');
+        }
+        $item = $item->findOrFail($id);
         
         // Vérifier les permissions avec la Policy
         $policy = new \App\Policies\ShoppingListItemPolicy();
@@ -213,7 +250,14 @@ class ShoppingListItemController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        $item = ShoppingListItem::findOrFail($id);
+        // Filtrer par établissement de l'utilisateur connecté
+        $item = ShoppingListItem::query();
+        if ($user->store_id) {
+            $item->where('store_id', $user->store_id);
+        } else {
+            $item->whereRaw('1 = 0');
+        }
+        $item = $item->findOrFail($id);
         
         // Vérifier les permissions avec la Policy
         $policy = new \App\Policies\ShoppingListItemPolicy();

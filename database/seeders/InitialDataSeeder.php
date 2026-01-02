@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Store;
-use App\Models\Zone;
 use App\Models\Category;
 
 class InitialDataSeeder extends Seeder
@@ -23,29 +22,6 @@ class InitialDataSeeder extends Seeder
                 'is_active' => true,
             ]
         );
-
-        // Créer les zones de stockage et de service
-        $zones = [
-            ['name' => 'Boucherie', 'type' => 'boucherie', 'description' => 'Zone boucherie'],
-            ['name' => 'Cuisine', 'type' => 'cuisine', 'description' => 'Zone cuisine'],
-            ['name' => 'Salle', 'type' => 'salle', 'description' => 'Zone salle de restaurant'],
-            ['name' => 'Réserve sèche', 'type' => 'reserve_seche', 'description' => 'Réserve pour produits secs'],
-            ['name' => 'Chambre froide', 'type' => 'chambre_froide', 'description' => 'Chambre froide', 'temperature' => 4],
-            ['name' => 'Congélateur', 'type' => 'congelateur', 'description' => 'Congélateur', 'temperature' => -18],
-        ];
-
-        foreach ($zones as $zoneData) {
-            Zone::firstOrCreate(
-                [
-                    'store_id' => $store->id,
-                    'name' => $zoneData['name'],
-                ],
-                array_merge($zoneData, [
-                    'store_id' => $store->id,
-                    'is_active' => true,
-                ])
-            );
-        }
 
         // Créer les catégories de produits
         $categories = [
@@ -67,7 +43,6 @@ class InitialDataSeeder extends Seeder
 
         $this->command->info('✅ Données initiales créées avec succès !');
         $this->command->info("   - 1 magasin créé");
-        $this->command->info("   - " . count($zones) . " zones créées");
         $this->command->info("   - " . count($categories) . " catégories créées");
     }
 }

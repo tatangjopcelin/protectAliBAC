@@ -34,34 +34,41 @@ class DashboardController extends Controller
         $period = $request->get('period', 'month'); // day, week, month, year
 
         return response()->json([
-            'overview' => $this->getOverview(),
-            'stock_value' => $this->getStockValue(),
-            'waste' => $this->getWasteStats($period),
-            'consumption' => $this->getConsumptionStats($period),
-            'top_products' => $this->getTopProducts($period),
-            'expiring_products' => $this->getExpiringProducts(),
-            'low_stock_products' => $this->getLowStockProducts(),
-            'alerts_summary' => $this->getAlertsSummary(),
+            'overview' => $this->getOverview($user),
+            'stock_value' => $this->getStockValue($user),
+            'waste' => $this->getWasteStats($period, $user),
+            'consumption' => $this->getConsumptionStats($period, $user),
+            'top_products' => $this->getTopProducts($period, $user),
+            'expiring_products' => $this->getExpiringProducts($user),
+            'low_stock_products' => $this->getLowStockProducts($user),
+            'alerts_summary' => $this->getAlertsSummary($user),
         ]);
     }
 
     /**
      * Vue d'ensemble générale
      */
-    private function getOverview(): array
+    private function getOverview($user): array
     {
+        $productsQuery = Product::where('is_active', true)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            });
+
         return [
-            'total_products' => Product::where('is_active', true)->count(),
-            'total_stock_value' => $this->getStockValue()['total'],
-            'expiring_today' => Product::where('is_active', true)
+            'total_products' => (clone $productsQuery)->count(),
+            'total_stock_value' => $this->getStockValue($user)['total'],
+            'expiring_today' => (clone $productsQuery)
                 ->where('expiration_date', Carbon::today())
                 ->where('quantity', '>', 0)
                 ->count(),
-            'expiring_tomorrow' => Product::where('is_active', true)
+            'expiring_tomorrow' => (clone $productsQuery)
                 ->where('expiration_date', Carbon::tomorrow())
                 ->where('quantity', '>', 0)
                 ->count(),
-            'low_stock_count' => Product::where('is_active', true)
+            'low_stock_count' => (clone $productsQuery)
                 ->where(function ($query) {
                     // Produits avec min_quantity défini et quantity <= min_quantity
                     $query->whereNotNull('min_quantity')
@@ -73,7 +80,7 @@ class DashboardController extends Controller
                           ->where('quantity', '<=', 0);
                 })
                 ->count(),
-            'expired_count' => Product::where('is_active', true)
+            'expired_count' => (clone $productsQuery)
                 ->where('status', 'expired')
                 ->where('quantity', '>', 0)
                 ->count(),
@@ -83,10 +90,15 @@ class DashboardController extends Controller
     /**
      * Valeur totale du stock
      */
-    private function getStockValue(): array
+    private function getStockValue($user): array
     {
         $products = Product::where('is_active', true)
             ->whereNotNull('purchase_price')
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->get();
 
         $total = 0;
@@ -113,12 +125,17 @@ class DashboardController extends Controller
     /**
      * Statistiques de gaspillage
      */
-    private function getWasteStats(string $period): array
+    private function getWasteStats(string $period, $user): array
     {
         $dateFrom = $this->getDateFrom($period);
 
         $wastedMovements = StockMovement::where('type', 'wasted')
             ->where('created_at', '>=', $dateFrom)
+            ->whereHas('product.zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->with('product')
             ->get();
 
@@ -176,12 +193,17 @@ class DashboardController extends Controller
     /**
      * Statistiques de consommation
      */
-    private function getConsumptionStats(string $period): array
+    private function getConsumptionStats(string $period, $user): array
     {
         $dateFrom = $this->getDateFrom($period);
 
         $consumptionMovements = StockMovement::whereIn('type', ['used', 'exit'])
             ->where('created_at', '>=', $dateFrom)
+            ->whereHas('product.zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->with('product.category')
             ->get();
 
@@ -236,22 +258,28 @@ class DashboardController extends Controller
     /**
      * Top produits (utilisés et jetés)
      */
-    private function getTopProducts(string $period): array
+    private function getTopProducts(string $period, $user): array
     {
         $dateFrom = $this->getDateFrom($period);
 
-        $usedProducts = StockMovement::where('type', 'used')
-            ->where('created_at', '>=', $dateFrom)
-            ->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
+        $usedProductsQuery = StockMovement::where('type', 'used')
+            ->where('created_at', '>=', $dateFrom);
+        if ($user->store_id) {
+            $usedProductsQuery->where('store_id', $user->store_id);
+        }
+        $usedProducts = $usedProductsQuery->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
             ->groupBy('product_id')
             ->orderBy('total_quantity', 'desc')
             ->limit(10)
             ->with('product')
             ->get();
 
-        $wastedProducts = StockMovement::where('type', 'wasted')
-            ->where('created_at', '>=', $dateFrom)
-            ->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
+        $wastedProductsQuery = StockMovement::where('type', 'wasted')
+            ->where('created_at', '>=', $dateFrom);
+        if ($user->store_id) {
+            $wastedProductsQuery->where('store_id', $user->store_id);
+        }
+        $wastedProducts = $wastedProductsQuery->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
             ->groupBy('product_id')
             ->orderBy('total_quantity', 'desc')
             ->limit(10)
@@ -279,10 +307,17 @@ class DashboardController extends Controller
     /**
      * Produits expirant bientôt
      */
-    private function getExpiringProducts(): array
+    private function getExpiringProducts($user): array
     {
+        $productsQuery = Product::where('is_active', true)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            });
+
         return [
-            'today' => Product::where('is_active', true)
+            'today' => (clone $productsQuery)
                 ->where('expiration_date', Carbon::today())
                 ->where('quantity', '>', 0)
                 ->with(['category', 'zone.store'])
@@ -300,7 +335,7 @@ class DashboardController extends Controller
                 })
                 ->values()
                 ->toArray(),
-            'tomorrow' => Product::where('is_active', true)
+            'tomorrow' => (clone $productsQuery)
                 ->where('expiration_date', Carbon::tomorrow())
                 ->where('quantity', '>', 0)
                 ->with(['category', 'zone.store'])
@@ -345,9 +380,14 @@ class DashboardController extends Controller
     /**
      * Produits en stock bas
      */
-    private function getLowStockProducts(): array
+    private function getLowStockProducts($user): array
     {
         return Product::where('is_active', true)
+            ->whereHas('zone', function($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
             ->where(function ($query) {
                 // Produits avec min_quantity défini et quantity <= min_quantity
                 $query->whereNotNull('min_quantity')
@@ -380,16 +420,21 @@ class DashboardController extends Controller
     /**
      * Résumé des alertes
      */
-    private function getAlertsSummary(): array
+    private function getAlertsSummary($user): array
     {
+        $alertsQuery = Alert::where('is_read', false);
+        if ($user->store_id) {
+            $alertsQuery->where('store_id', $user->store_id);
+        }
+
         return [
-            'total_unread' => Alert::where('is_read', false)->count(),
-            'by_type' => Alert::where('is_read', false)
+            'total_unread' => (clone $alertsQuery)->count(),
+            'by_type' => (clone $alertsQuery)
                 ->select('type', DB::raw('count(*) as count'))
                 ->groupBy('type')
                 ->get()
                 ->pluck('count', 'type'),
-            'by_severity' => Alert::where('is_read', false)
+            'by_severity' => (clone $alertsQuery)
                 ->select('severity', DB::raw('count(*) as count'))
                 ->groupBy('severity')
                 ->get()

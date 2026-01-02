@@ -9,6 +9,7 @@ class Alert extends Model
 {
     protected $fillable = [
         'product_id',
+        'store_id',
         'type',
         'severity',
         'message',
@@ -24,6 +25,11 @@ class Alert extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     public function markAsRead(): void
