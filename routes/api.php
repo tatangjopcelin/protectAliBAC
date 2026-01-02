@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\TimeEntryCorrectionController;
 use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PayrollReportController;
+use App\Http\Controllers\Api\TaskController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -176,6 +177,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour la distribution des rapports de paie (admin uniquement)
     Route::post('/payroll-reports/distribute', [PayrollReportController::class, 'distribute']); // Distribuer les rapports
     Route::get('/payroll-reports/statuses', [PayrollReportController::class, 'getStatuses']); // Récupérer les statuts des rapports
+    
+    // Routes pour les tâches
+    Route::get('/tasks/my', [TaskController::class, 'myTasks']); // Mes tâches
+    Route::apiResource('tasks', TaskController::class);
 });
 
 // Routes publiques pour les rapports de paie (accessible via token)
