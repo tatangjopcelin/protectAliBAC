@@ -144,8 +144,15 @@ class NotificationService
         
         $fullMessage = "{$alert->message}\n\n{$location}\n{$expirationInfo}";
 
-        // Notifier TOUS les utilisateurs
-        $users = User::all();
+        // Notifier seulement les utilisateurs de l'établissement concerné
+        $storeId = $product->zone?->store_id;
+        $query = User::whereNotNull('email_verified_at');
+        
+        if ($storeId) {
+            $query->where('store_id', $storeId);
+        }
+        
+        $users = $query->get();
 
         foreach ($users as $user) {
             $this->sendNotification(
@@ -189,8 +196,15 @@ class NotificationService
         $message .= "Ajouté par: {$addedBy->name}\n";
         $message .= "{$location}";
 
-        // Notifier TOUS les utilisateurs
-        $users = User::all();
+        // Notifier seulement les utilisateurs de l'établissement concerné
+        $storeId = $product->zone?->store_id;
+        $query = User::whereNotNull('email_verified_at');
+        
+        if ($storeId) {
+            $query->where('store_id', $storeId);
+        }
+        
+        $users = $query->get();
 
         foreach ($users as $user) {
             $this->sendNotification(

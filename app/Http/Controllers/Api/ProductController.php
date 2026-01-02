@@ -1094,10 +1094,16 @@ class ProductController extends Controller
     private function notifyAllUsersExcept(User $excludedUser, $notification)
     {
         try {
-            // Récupérer tous les utilisateurs sauf celui qui a fait l'action
-            $users = User::where('id', '!=', $excludedUser->id)
-                ->whereNotNull('email_verified_at') // Seulement les utilisateurs vérifiés
-                ->get();
+            // Récupérer tous les utilisateurs du même établissement sauf celui qui a fait l'action
+            $query = User::where('id', '!=', $excludedUser->id)
+                ->whereNotNull('email_verified_at'); // Seulement les utilisateurs vérifiés
+            
+            // Filtrer par store_id si l'utilisateur a un store_id
+            if ($excludedUser->store_id) {
+                $query->where('store_id', $excludedUser->store_id);
+            }
+            
+            $users = $query->get();
 
             // Envoyer la notification à chaque utilisateur
             foreach ($users as $user) {
@@ -1114,6 +1120,7 @@ class ProductController extends Controller
 
             \Log::info('Notifications envoyées', [
                 'excluded_user_id' => $excludedUser->id,
+                'store_id' => $excludedUser->store_id,
                 'notified_users_count' => $users->count()
             ]);
         } catch (\Exception $e) {
