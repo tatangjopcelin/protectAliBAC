@@ -816,13 +816,47 @@ class TimeEntryController extends Controller
             'user_id' => $targetUser->id,
         ]);
 
-        // Chercher le planning du jour (le plus récent ou celui qui correspond à l'heure actuelle)
-        $schedule = Schedule::where('user_id', $targetUser->id)
+        // Chercher le planning du jour qui correspond le mieux à l'heure actuelle
+        // Priorité : trouver le planning non complété dont l'heure de début est la plus proche (avant ou après) de l'heure de pointage
+        $clockInTime = now();
+        $schedules = Schedule::where('user_id', $targetUser->id)
             ->whereDate('date', $today)
             ->where('status', '!=', 'cancelled')
             ->where('status', '!=', 'request') // Ne pas utiliser les plannings "request"
-            ->orderBy('start_time', 'desc')
-            ->first();
+            ->orderBy('start_time', 'asc')
+            ->get();
+        
+        $schedule = null;
+        $bestSchedule = null;
+        $minDiff = PHP_INT_MAX;
+        
+        foreach ($schedules as $s) {
+            // Vérifier si ce planning a déjà un pointage complété
+            $hasCompletedEntry = TimeEntry::where('user_id', $targetUser->id)
+                ->whereDate('date', $today)
+                ->where('schedule_id', $s->id)
+                ->whereNotNull('clock_in')
+                ->whereNotNull('clock_out')
+                ->exists();
+            
+            // Ne considérer que les plannings non complétés
+            if (!$hasCompletedEntry) {
+                // Calculer la différence entre l'heure de début du planning et l'heure de pointage
+                $scheduleStart = Carbon::parse($s->date->format('Y-m-d') . ' ' . $s->start_time);
+                $diff = abs($clockInTime->diffInMinutes($scheduleStart));
+                
+                // Si le planning commence avant ou à l'heure de pointage, le considérer
+                // Sinon, ne le considérer que si c'est le meilleur choix (le plus proche)
+                if ($scheduleStart <= $clockInTime || $diff < $minDiff) {
+                    if ($diff < $minDiff) {
+                        $minDiff = $diff;
+                        $bestSchedule = $s;
+                    }
+                }
+            }
+        }
+        
+        $schedule = $bestSchedule;
 
         // Vérifier si l'employé a déjà pointé et pointé son départ aujourd'hui
         // Si oui, et qu'il veut pointer à nouveau, c'est une nouvelle période de travail
