@@ -162,6 +162,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/time-entries/clock-out-for-user', [TimeEntryController::class, 'clockOutForUser']); // Pointer départ pour un utilisateur
     Route::post('/time-entries/clock-in', [TimeEntryController::class, 'clockIn']); // Pointer l'arrivée
     Route::post('/time-entries/clock-out', [TimeEntryController::class, 'clockOut']); // Pointer le départ
+    Route::post('/time-entries/create-manual', [TimeEntryController::class, 'createManual']); // Créer un pointage manuel
     Route::get('/time-entries/today', [TimeEntryController::class, 'getTodayEntry']); // Pointage du jour
     Route::get('/time-entries/user/{userId}', [TimeEntryController::class, 'getUserEntries']); // Historique des pointages
     Route::get('/time-entries/statistics', [TimeEntryController::class, 'getStatistics']); // Statistiques

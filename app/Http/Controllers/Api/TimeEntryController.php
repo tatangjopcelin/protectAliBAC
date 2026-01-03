@@ -322,6 +322,68 @@ class TimeEntryController extends Controller
     }
 
     /**
+     * Créer un pointage manuel pour un employé (admin/chef/director seulement)
+     * Utilisé quand un employé a oublié de pointer
+     */
+    public function createManual(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seuls admin, chef et directeur peuvent créer des pointages manuels
+        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'date' => 'required|date',
+            'clock_in' => 'required|date',
+            'clock_out' => 'required|date|after:clock_in',
+            'break_duration' => 'nullable|numeric|min:0',
+            'status' => 'sometimes|in:present,absent,late,early_leave',
+            'notes' => 'nullable|string',
+        ]);
+
+        // Vérifier que l'employé appartient au même établissement
+        $targetUser = \App\Models\User::findOrFail($validated['user_id']);
+        if ($user->store_id && $targetUser->store_id !== $user->store_id) {
+            return response()->json(['message' => 'L\'employé doit appartenir au même établissement'], 403);
+        }
+
+        // Chercher le planning du jour si disponible
+        $schedule = Schedule::where('user_id', $validated['user_id'])
+            ->whereDate('date', $validated['date'])
+            ->where('status', '!=', 'cancelled')
+            ->orderBy('start_time', 'desc')
+            ->first();
+
+        // Créer le pointage manuel
+        $timeEntry = TimeEntry::create([
+            'user_id' => $validated['user_id'],
+            'store_id' => $targetUser->store_id,
+            'schedule_id' => $schedule?->id,
+            'date' => $validated['date'],
+            'clock_in' => $validated['clock_in'],
+            'clock_out' => $validated['clock_out'],
+            'break_duration' => $validated['break_duration'] ?? 0,
+            'status' => $validated['status'] ?? 'present',
+            'notes' => $validated['notes'] ?? 'Pointage manuel ajouté par ' . $user->name,
+        ]);
+
+        // Calculer les heures travaillées
+        $timeEntry->hours_worked = $timeEntry->calculateHoursWorked();
+        $timeEntry->save();
+
+        return response()->json([
+            'message' => 'Pointage manuel créé avec succès',
+            'time_entry' => $timeEntry->load(['user', 'schedule'])
+        ], 201);
+    }
+
+    /**
      * Get statistics for time entries
      * Tous les utilisateurs peuvent voir leurs propres statistiques
      * Admin/chef/directeur peuvent voir les statistiques de tous
