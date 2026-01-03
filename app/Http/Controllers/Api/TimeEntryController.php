@@ -347,6 +347,41 @@ class TimeEntryController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // Parser les dates en timezone locale (Europe/Paris)
+        // Si la date est au format 'YYYY-MM-DD HH:mm:ss', la parser comme date locale
+        $appTimezone = 'Europe/Paris'; // Timezone de l'application
+        
+        $clockIn = null;
+        $clockOut = null;
+        
+        // Si les dates sont au format 'YYYY-MM-DD HH:mm:ss' (sans timezone), 
+        // les interpréter comme étant dans le timezone de l'application
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $validated['clock_in'])) {
+            // Format sans timezone, créer en timezone locale puis convertir en UTC pour le stockage
+            $clockIn = Carbon::createFromFormat('Y-m-d H:i:s', $validated['clock_in'], $appTimezone);
+        } else {
+            // Format ISO avec timezone, parser et convertir en timezone locale
+            $clockIn = Carbon::parse($validated['clock_in'])->setTimezone($appTimezone);
+        }
+        
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $validated['clock_out'])) {
+            $clockOut = Carbon::createFromFormat('Y-m-d H:i:s', $validated['clock_out'], $appTimezone);
+        } else {
+            $clockOut = Carbon::parse($validated['clock_out'])->setTimezone($appTimezone);
+        }
+        
+        // Vérifier que clock_out est après clock_in
+        if ($clockOut <= $clockIn) {
+            return response()->json([
+                'message' => 'L\'heure de départ doit être après l\'heure d\'arrivée'
+            ], 400);
+        }
+        
+        // Stocker les dates (Carbon les convertira automatiquement en UTC pour le stockage en DB)
+        // Mais on garde la valeur en timezone locale pour l'affichage
+        $validated['clock_in'] = $clockIn;
+        $validated['clock_out'] = $clockOut;
+
         // Vérifier que l'employé appartient au même établissement
         $targetUser = \App\Models\User::findOrFail($validated['user_id']);
         if ($user->store_id && $targetUser->store_id !== $user->store_id) {

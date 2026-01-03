@@ -71,9 +71,9 @@ class TimeEntry extends Model
         // Calculer le total des pauses (break_duration + pauses réelles)
         $totalBreakMinutes = 0;
         
-        // Ajouter break_duration si disponible (maintenant stocké en minutes)
+        // Ajouter break_duration si disponible (stocké en heures, convertir en minutes)
         if ($this->break_duration) {
-            $totalBreakMinutes += $this->break_duration;
+            $totalBreakMinutes += (float)$this->break_duration * 60; // Convertir les heures en minutes
         }
         
         // Ajouter toutes les pauses réelles
@@ -84,13 +84,14 @@ class TimeEntry extends Model
                 } elseif ($break->start_break && $break->end_break) {
                     $startBreak = Carbon::parse($break->start_break);
                     $endBreak = Carbon::parse($break->end_break);
-                    $totalBreakMinutes += $endBreak->diffInMinutes($startBreak);
+                    $totalBreakMinutes += abs($endBreak->diffInMinutes($startBreak));
                 }
             }
         }
         
         // Calculer la différence en minutes pour avoir une précision exacte
-        $totalMinutes = $end->diffInMinutes($start);
+        // Utiliser abs() pour s'assurer d'avoir une valeur positive
+        $totalMinutes = abs($start->diffInMinutes($end));
         $netMinutes = max(0, $totalMinutes - $totalBreakMinutes);
         
         // Convertir en heures avec 2 décimales
