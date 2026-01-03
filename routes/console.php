@@ -29,3 +29,8 @@ Schedule::call(function () {
 Schedule::command('time-entries:check-overtime')
     ->everyFifteenMinutes()
     ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte');
+
+// Vérifier les super tâches hebdomadaires chaque lundi à 8h00
+Schedule::command('super-tasks:check-weekly')
+    ->weeklyOn(1, '08:00')
+    ->description('Vérifie que les super tâches sont assignées pour chaque semaine et envoie des alertes si nécessaire');

@@ -26,6 +26,7 @@ use App\Http\Controllers\Api\BreakController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PayrollReportController;
 use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\SuperTaskController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -181,6 +182,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les tâches
     Route::get('/tasks/my', [TaskController::class, 'myTasks']); // Mes tâches
     Route::apiResource('tasks', TaskController::class);
+    
+    // Routes pour les super tâches
+    Route::get('/super-tasks/my', [SuperTaskController::class, 'mySuperTasks']); // Mes super tâches
+    Route::get('/super-tasks/has-pending', [SuperTaskController::class, 'hasPendingSuperTasks']); // Vérifier si l'utilisateur a des super tâches en attente
+    Route::apiResource('super-tasks', SuperTaskController::class);
 });
 
 // Routes publiques pour les rapports de paie (accessible via token)
