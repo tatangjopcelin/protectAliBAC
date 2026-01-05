@@ -23,38 +23,40 @@
         </div>
         
         <p>Voici vos horaires planifiés :</p>
-        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #ffffff;">
-            <thead>
-                <tr style="background-color: #f8f9fa;">
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Jour</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Heures</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Type</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Durée</th>
-                    <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Statut</th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($schedulesByDay as $date => $daySchedules)
-                    @foreach($daySchedules as $schedule)
-                    @php
-                        // Les heures sont déjà formatées par les accesseurs du modèle
-                        $startTime = $schedule->start_time ?: '-';
-                        $endTime = $schedule->end_time ?: '-';
-                    @endphp
-                    <tr>
-                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>{{ $dayNames[$date] }}</strong></td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ $startTime }} - {{ $endTime }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ $shiftTypes[$schedule->id] }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ $durations[$schedule->id] }}</td>
-                        <td style="padding: 8px; border: 1px solid #ddd;">{{ $statusLabels[$schedule->id] }}</td>
+        <div style="overflow-x: auto; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse; background-color: #ffffff; min-width: 100%;">
+                <thead>
+                    <tr style="background-color: #f8f9fa;">
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Jour</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Heures</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Type</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Durée</th>
+                        <th style="padding: 12px; border: 1px solid #ddd; text-align: left;">Statut</th>
                     </tr>
+                </thead>
+                <tbody>
+                    @foreach($schedulesByDay as $date => $daySchedules)
+                        @foreach($daySchedules as $schedule)
+                        @php
+                            // Les heures sont déjà formatées par les accesseurs du modèle
+                            $startTime = $schedule->start_time ?: '-';
+                            $endTime = $schedule->end_time ?: '-';
+                        @endphp
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;"><strong>{{ $dayNames[$date] }}</strong></td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{{ $startTime }} - {{ $endTime }}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{{ $shiftTypes[$schedule->id] }}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{{ $durations[$schedule->id] }}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">{{ $statusLabels[$schedule->id] }}</td>
+                        </tr>
+                        @endforeach
                     @endforeach
-                @endforeach
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+        </div>
         
-        <div style="background-color: #f8f9fa; padding: 15px; margin-top: 20px; border-radius: 4px; text-align: center;">
-            <p style="margin: 0; font-size: 14px; color: #666;">
+        <div style="background-color: #f8f9fa; padding: 15px; margin-top: 30px; margin-bottom: 20px; border-radius: 4px; text-align: center; clear: both;">
+            <p style="margin: 0; font-size: 14px; color: #666; line-height: 1.6;">
                 <strong>Récapitulatif :</strong> {{ count($schedulesByDay) }} jour(s) planifié(s) pour un total de <strong style="color: #2c3e50;">{{ $totalHoursFormatted }}</strong>
             </p>
         </div>
@@ -64,11 +66,13 @@
         </p>
         @endif
         
-        <p style="margin-top: 20px;">
-            <strong>Publié par :</strong> {{ $publisher->name }}
-        </p>
-        
-        <p>Si vous avez des questions ou des modifications à demander, veuillez contacter votre responsable.</p>
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p style="margin: 10px 0;">
+                <strong>Publié par :</strong> {{ $publisher->name }}
+            </p>
+            
+            <p style="margin: 10px 0;">Si vous avez des questions ou des modifications à demander, veuillez contacter votre responsable.</p>
+        </div>
     </div>
     
     <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #666; font-size: 12px;">
