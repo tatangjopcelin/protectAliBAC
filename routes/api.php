@@ -154,6 +154,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/schedules/weekly', [ScheduleController::class, 'getWeeklySchedule']); // Planning hebdomadaire
     Route::get('/schedules/monthly', [ScheduleController::class, 'getMonthlySchedule']); // Planning mensuel
     Route::put('/schedules/{id}/validate-request', [ScheduleController::class, 'validateRequest']); // Valider un planning "request"
+    Route::post('/schedules/publish', [ScheduleController::class, 'publishSchedule']); // Publier et envoyer le planning par email
     Route::apiResource('schedules', ScheduleController::class);
     
     // Routes pour les pointages (doivent être définies AVANT apiResource)

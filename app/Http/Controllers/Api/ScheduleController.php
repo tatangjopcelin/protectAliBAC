@@ -7,6 +7,8 @@ use App\Models\Schedule;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use App\Notifications\SchedulePublishedNotification;
 use Carbon\Carbon;
 
 class ScheduleController extends Controller
@@ -405,5 +407,99 @@ class ScheduleController extends Controller
             'message' => 'Planning validé avec succès. Les heures seront maintenant comptabilisées.',
             'schedule' => $schedule->load(['user', 'creator'])
         ]);
+    }
+
+    /**
+     * Publier et envoyer le planning par email à tous les employés
+     * Seuls admin, chef et directeur peuvent publier
+     */
+    public function publishSchedule(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seuls admin, chef et directeur peuvent publier
+        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $weekStart = Carbon::parse($validated['start_date'])->startOfDay();
+        $weekEnd = Carbon::parse($validated['end_date'])->endOfDay();
+
+        // Récupérer tous les plannings de la semaine (sauf cancelled)
+        $query = Schedule::with(['user', 'creator'])
+            ->whereBetween('date', [$weekStart, $weekEnd])
+            ->where('status', '!=', 'cancelled');
+
+        // Filtrer par établissement
+        if ($user->store_id) {
+            $query->where('store_id', $user->store_id);
+        }
+
+        $schedules = $query->orderBy('date', 'asc')
+            ->orderBy('start_time', 'asc')
+            ->get();
+
+        // Formater les dates pour éviter les problèmes de fuseau horaire
+        $schedules->transform(function ($schedule) {
+            return $this->formatScheduleDate($schedule);
+        });
+
+        // Grouper les plannings par employé
+        $schedulesByUser = [];
+        foreach ($schedules as $schedule) {
+            $userId = $schedule->user_id;
+            if (!isset($schedulesByUser[$userId])) {
+                $schedulesByUser[$userId] = [];
+            }
+            $schedulesByUser[$userId][] = $schedule;
+        }
+
+        // Envoyer un email à chaque employé avec son planning
+        $sentCount = 0;
+        $errors = [];
+
+        foreach ($schedulesByUser as $userId => $userSchedules) {
+            try {
+                $employee = User::find($userId);
+                if (!$employee || !$employee->email) {
+                    $errors[] = "Employé ID {$userId} : email non trouvé";
+                    continue;
+                }
+
+                // Envoyer la notification par email
+                $employee->notify(new SchedulePublishedNotification(
+                    $userSchedules,
+                    $weekStart->format('Y-m-d'),
+                    $weekEnd->format('Y-m-d'),
+                    $user
+                ));
+
+                $sentCount++;
+            } catch (\Exception $e) {
+                Log::error("Erreur envoi email planning à l'employé {$userId}: " . $e->getMessage());
+                $errors[] = "Employé ID {$userId} : " . $e->getMessage();
+            }
+        }
+
+        $response = [
+            'message' => "Planning publié avec succès. {$sentCount} email(s) envoyé(s).",
+            'sent_count' => $sentCount,
+            'total_employees' => count($schedulesByUser),
+        ];
+
+        if (!empty($errors)) {
+            $response['errors'] = $errors;
+            $response['message'] .= " " . count($errors) . " erreur(s) lors de l'envoi.";
+        }
+
+        return response()->json($response, 200);
     }
 }
