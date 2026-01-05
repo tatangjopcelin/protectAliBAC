@@ -395,11 +395,39 @@ class TimeEntryController extends Controller
             ->orderBy('start_time', 'desc')
             ->first();
 
+        // Si aucun planning n'existe, créer un planning automatiquement basé sur le pointage manuel
+        if (!$schedule) {
+            // Extraire les heures de clock_in et clock_out pour créer le planning
+            $startTime = $clockIn->format('H:i');
+            $endTime = $clockOut->format('H:i');
+            
+            // Calculer la durée de pause si fournie
+            $breakDuration = null;
+            if (isset($validated['break_duration']) && $validated['break_duration'] > 0) {
+                $breakHours = floor($validated['break_duration']);
+                $breakMinutes = round(($validated['break_duration'] - $breakHours) * 60);
+                $breakDuration = sprintf('%02d:%02d', $breakHours, $breakMinutes);
+            }
+            
+            // Créer le planning avec le statut "confirmed" pour indiquer qu'il est validé
+            $schedule = Schedule::create([
+                'user_id' => $validated['user_id'],
+                'store_id' => $targetUser->store_id,
+                'date' => $validated['date'],
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+                'break_duration' => $breakDuration,
+                'status' => 'confirmed', // Statut confirmé car c'est un pointage réel
+                'notes' => 'Planning créé automatiquement à partir d\'un pointage manuel ajouté par ' . $user->name,
+                'created_by' => $user->id,
+            ]);
+        }
+
         // Créer le pointage manuel
         $timeEntry = TimeEntry::create([
             'user_id' => $validated['user_id'],
             'store_id' => $targetUser->store_id,
-            'schedule_id' => $schedule?->id,
+            'schedule_id' => $schedule->id,
             'date' => $validated['date'],
             'clock_in' => $validated['clock_in'],
             'clock_out' => $validated['clock_out'],
