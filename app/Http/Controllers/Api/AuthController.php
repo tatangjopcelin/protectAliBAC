@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
@@ -426,5 +427,119 @@ class AuthController extends Controller
                 'establishment_code' => $user->store->establishment_code,
             ] : null,
         ]);
+    }
+
+    /**
+     * Demander la réinitialisation du mot de passe (mot de passe oublié)
+     */
+    public function forgotPassword(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'email' => 'required|email',
+            ]);
+
+            // Vérifier que l'utilisateur existe et a un email vérifié
+            $user = User::where('email', $validated['email'])->first();
+
+            if (!$user) {
+                // Pour des raisons de sécurité, on ne révèle pas si l'email existe ou non
+                return response()->json([
+                    'message' => 'Si cet email existe dans notre système, un lien de réinitialisation vous a été envoyé.',
+                ], 200);
+            }
+
+            if (!$user->hasVerifiedEmail()) {
+                return response()->json([
+                    'message' => 'Votre adresse email n\'a pas été vérifiée. Veuillez d\'abord vérifier votre email.',
+                ], 400);
+            }
+
+            // Envoyer la notification de réinitialisation personnalisée
+            // Utiliser sendResetLink avec une callback pour utiliser notre notification personnalisée
+            $status = Password::sendResetLink(
+                ['email' => $validated['email']],
+                function ($user, $token) {
+                    // Créer une instance de notification avec le token fourni par Laravel
+                    $user->notify(new \App\Notifications\ResetPasswordNotification($token));
+                }
+            );
+
+            if ($status === Password::RESET_LINK_SENT) {
+                return response()->json([
+                    'message' => 'Un lien de réinitialisation a été envoyé à votre adresse email.',
+                ], 200);
+            }
+
+            return response()->json([
+                'message' => 'Erreur lors de l\'envoi du lien de réinitialisation.',
+            ], 500);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la demande de réinitialisation: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Erreur lors de la demande de réinitialisation',
+                'error' => config('app.debug') ? $e->getMessage() : 'Une erreur est survenue',
+            ], 500);
+        }
+    }
+
+    /**
+     * Réinitialiser le mot de passe
+     */
+    public function resetPassword(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'token' => 'required|string',
+                'email' => 'required|email',
+                'password' => 'required|string|min:8|confirmed',
+            ]);
+
+            $status = Password::reset(
+                $validated,
+                function ($user, $password) {
+                    $user->password = Hash::make($password);
+                    $user->save();
+                }
+            );
+
+            if ($status === Password::PASSWORD_RESET) {
+                return response()->json([
+                    'message' => 'Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter.',
+                ], 200);
+            }
+
+            if ($status === Password::INVALID_TOKEN) {
+                return response()->json([
+                    'message' => 'Le lien de réinitialisation est invalide ou a expiré. Veuillez demander un nouveau lien.',
+                ], 400);
+            }
+
+            if ($status === Password::INVALID_USER) {
+                return response()->json([
+                    'message' => 'Aucun utilisateur trouvé avec cet email.',
+                ], 404);
+            }
+
+            return response()->json([
+                'message' => 'Erreur lors de la réinitialisation du mot de passe.',
+            ], 500);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'message' => 'Erreur de validation',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Erreur lors de la réinitialisation: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Erreur lors de la réinitialisation du mot de passe',
+                'error' => config('app.debug') ? $e->getMessage() : 'Une erreur est survenue',
+            ], 500);
+        }
     }
 }

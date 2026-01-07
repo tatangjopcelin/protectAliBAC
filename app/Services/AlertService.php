@@ -154,6 +154,20 @@ class AlertService
                     'message' => $message,
                     'severity' => $severity,
                 ]);
+                
+                // Charger les relations nécessaires pour la notification
+                $existingAlert->load('product.zone.store', 'product.category');
+                
+                // Envoyer les notifications à TOUS les utilisateurs de l'établissement
+                // même si l'alerte existe déjà (pour les notifications quotidiennes à 10h30 et 15h30)
+                try {
+                    $this->notificationService->notifyAlert($existingAlert, $severity);
+                } catch (\Exception $e) {
+                    // Logger l'erreur mais ne pas bloquer la mise à jour de l'alerte
+                    \Log::error('Erreur lors de l\'envoi de notification (alerte existante): ' . $e->getMessage());
+                    \Log::error('Stack trace: ' . $e->getTraceAsString());
+                }
+                
                 return;
             }
         } else {

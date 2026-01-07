@@ -38,6 +38,10 @@ Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum')
 Route::post('/email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
 Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])->name('verification.resend');
 
+// Routes de réinitialisation de mot de passe
+Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name('password.forgot');
+Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
+
 // Routes publiques (peut être sécurisées plus tard)
 Route::apiResource('stores', StoreController::class);
 Route::apiResource('categories', CategoryController::class);
