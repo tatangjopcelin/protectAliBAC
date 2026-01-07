@@ -183,12 +183,16 @@ class AlertService
             'message' => $message,
         ]);
 
+        // Charger les relations nécessaires pour la notification
+        $alert->load('product.zone.store', 'product.category');
+
         // Envoyer les notifications selon les préférences des utilisateurs
         try {
             $this->notificationService->notifyAlert($alert, $severity);
         } catch (\Exception $e) {
             // Logger l'erreur mais ne pas bloquer la création de l'alerte
             \Log::error('Erreur lors de l\'envoi de notification: ' . $e->getMessage());
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
         }
     }
 

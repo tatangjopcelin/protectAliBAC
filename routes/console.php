@@ -8,10 +8,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Planifier la vérification des dates de péremption tous les jours à 10h30
+// Planifier la vérification des dates de péremption tous les jours à 10h30 et 15h30
 Schedule::command('products:check-expiration')
     ->dailyAt('10:30')
-    ->description('Vérifie les dates de péremption des produits et crée des alertes');
+    ->description('Vérifie les dates de péremption des produits et crée des alertes (matin)');
+
+Schedule::command('products:check-expiration')
+    ->dailyAt('15:30')
+    ->description('Vérifie les dates de péremption des produits et crée des alertes (après-midi)');
 
 // Gérer automatiquement les produits périmés tous les jours à 11h00
 Schedule::command('products:handle-expired')

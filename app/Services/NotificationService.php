@@ -135,6 +135,9 @@ class NotificationService
         if (!$product->relationLoaded('zone')) {
             $product->load('zone.store');
         }
+        if (!$product->relationLoaded('category')) {
+            $product->load('category');
+        }
 
         // Construire le message avec toutes les informations
         $location = $this->getProductLocation($product);
@@ -155,22 +158,49 @@ class NotificationService
         $users = $query->get();
 
         foreach ($users as $user) {
-            $this->sendNotification(
-                $user,
-                $channel,
-                "Alerte: {$product->name}",
-                $fullMessage,
-                [
-                    'channel' => $channel,
-                    'product_id' => $product->id,
-                    'alert_id' => $alert->id,
-                    'severity' => $alert->severity,
-                    'zone_id' => $product->zone_id,
-                    'zone_name' => $product->zone?->name,
-                    'expiration_date' => $product->expiration_date?->format('Y-m-d'),
-                ],
-                $severity === 'critical' ? 'all' : 'push'
-            );
+            // Pour les alertes de péremption, utiliser une notification Mailable dédiée
+            if ($channel === 'expiration' || $channel === 'expired') {
+                try {
+                    $user->notify(new \App\Notifications\ProductExpirationAlertNotification($alert, $product));
+                } catch (\Exception $e) {
+                    \Log::error('Erreur envoi notification email péremption: ' . $e->getMessage());
+                    // En cas d'erreur, fallback sur la méthode standard
+                    $this->sendNotification(
+                        $user,
+                        $channel,
+                        "Alerte: {$product->name}",
+                        $fullMessage,
+                        [
+                            'channel' => $channel,
+                            'product_id' => $product->id,
+                            'alert_id' => $alert->id,
+                            'severity' => $alert->severity,
+                            'zone_id' => $product->zone_id,
+                            'zone_name' => $product->zone?->name,
+                            'expiration_date' => $product->expiration_date?->format('Y-m-d'),
+                        ],
+                        'all' // Toujours envoyer par email pour les alertes de péremption
+                    );
+                }
+            } else {
+                // Pour les autres types d'alertes, utiliser la méthode standard
+                $this->sendNotification(
+                    $user,
+                    $channel,
+                    "Alerte: {$product->name}",
+                    $fullMessage,
+                    [
+                        'channel' => $channel,
+                        'product_id' => $product->id,
+                        'alert_id' => $alert->id,
+                        'severity' => $alert->severity,
+                        'zone_id' => $product->zone_id,
+                        'zone_name' => $product->zone?->name,
+                        'expiration_date' => $product->expiration_date?->format('Y-m-d'),
+                    ],
+                    $severity === 'critical' ? 'all' : 'push'
+                );
+            }
         }
     }
 
