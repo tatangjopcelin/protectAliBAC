@@ -28,12 +28,20 @@ use App\Http\Controllers\Api\PayrollReportController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\SuperTaskController;
 use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\AccountSettingsController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
+
+// Routes pour les paramètres de compte
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/account-settings', [AccountSettingsController::class, 'show']);
+    Route::put('/account-settings/profile', [AccountSettingsController::class, 'updateProfile']);
+    Route::put('/account-settings/password', [AccountSettingsController::class, 'changePassword']);
+});
 
 // Routes de vérification d'email
 Route::post('/email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
