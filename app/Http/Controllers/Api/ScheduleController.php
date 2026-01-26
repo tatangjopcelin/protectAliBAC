@@ -154,6 +154,26 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'L\'utilisateur n\'appartient pas à votre établissement'], 403);
         }
 
+        // Vérifier si l'employé est en congé approuvé ce jour-là
+        $scheduleDate = \Carbon\Carbon::parse($validated['date'])->format('Y-m-d');
+        $leave = \App\Models\Leave::where('user_id', $validated['user_id'])
+            ->where('status', 'approved')
+            ->where(function ($query) use ($scheduleDate) {
+                $query->whereJsonContains('dates', $scheduleDate)
+                    ->orWhere(function ($q) use ($scheduleDate) {
+                        $q->whereDate('start_date', '<=', $scheduleDate)
+                          ->whereDate('end_date', '>=', $scheduleDate);
+                    });
+            })
+            ->first();
+
+        if ($leave) {
+            $leaveType = $leave->is_paid ? 'payé' : 'non soldé';
+            return response()->json([
+                'message' => "Cet employé est en congé {$leaveType} le {$scheduleDate}. Impossible de créer un planning."
+            ], 422);
+        }
+
         $schedule = Schedule::create([
             'user_id' => $validated['user_id'],
             'store_id' => $user->store_id, // Assigner automatiquement le store_id de l'admin
@@ -218,11 +238,6 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seuls admin, chef et directeur peuvent modifier des plannings
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
-            return response()->json(['message' => 'Accès refusé'], 403);
-        }
-
         $schedule = Schedule::findOrFail($id);
 
         // Vérifier que le planning appartient au même établissement
@@ -230,17 +245,38 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        $validated = $request->validate([
-            'user_id' => 'sometimes|exists:users,id',
-            'date' => 'sometimes|date',
+        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut modifier que son propre planning
+        // et avec des restrictions (pas de modification de user_id, date, status)
+        $isAdmin = in_array($user->role, ['admin', 'chef', 'director']);
+        if (!$isAdmin && $schedule->user_id !== $user->id) {
+            return response()->json(['message' => 'Vous ne pouvez modifier que votre propre planning'], 403);
+        }
+
+        // Les employés ne peuvent modifier que les heures et les pauses, pas user_id, date ou status
+        $validationRules = [
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i|after:start_time',
             'break_duration' => 'nullable|date_format:H:i',
             'start_break' => 'nullable|date_format:H:i',
             'end_break' => 'nullable|date_format:H:i|after:start_break',
-            'status' => 'sometimes|in:planned,confirmed,cancelled',
             'notes' => 'nullable|string',
-        ]);
+        ];
+
+        // Seuls les admins peuvent modifier user_id, date et status
+        if ($isAdmin) {
+            $validationRules['user_id'] = 'sometimes|exists:users,id';
+            $validationRules['date'] = 'sometimes|date';
+            $validationRules['status'] = 'sometimes|in:planned,confirmed,cancelled';
+        }
+
+        $validated = $request->validate($validationRules);
+
+        // Si l'employé essaie de modifier user_id, date ou status, rejeter
+        if (!$isAdmin) {
+            if (isset($validated['user_id']) || isset($validated['date']) || isset($validated['status'])) {
+                return response()->json(['message' => 'Vous ne pouvez modifier que les heures et les pauses'], 403);
+            }
+        }
 
         // Calculer break_duration si start_break et end_break sont fournis
         if (!empty($validated['start_break']) && !empty($validated['end_break'])) {
@@ -251,6 +287,35 @@ class ScheduleController extends Controller
             $hours = floor($breakMinutes / 60);
             $minutes = $breakMinutes % 60;
             $validated['break_duration'] = sprintf('%02d:%02d', $hours, $minutes);
+        }
+
+        // Si la date est modifiée, vérifier si l'employé est en congé ce jour-là
+        $targetUserId = $validated['user_id'] ?? $schedule->user_id;
+        if (isset($validated['date'])) {
+            // Comparer les dates normalisées (sans l'heure)
+            $newDate = Carbon::parse($validated['date'])->format('Y-m-d');
+            $currentDate = Carbon::parse($schedule->date)->format('Y-m-d');
+            
+            if ($newDate !== $currentDate) {
+                $scheduleDate = $newDate;
+                $leave = \App\Models\Leave::where('user_id', $targetUserId)
+                    ->where('status', 'approved')
+                    ->where(function ($query) use ($scheduleDate) {
+                        $query->whereJsonContains('dates', $scheduleDate)
+                            ->orWhere(function ($q) use ($scheduleDate) {
+                                $q->whereDate('start_date', '<=', $scheduleDate)
+                                  ->whereDate('end_date', '>=', $scheduleDate);
+                            });
+                    })
+                    ->first();
+
+                if ($leave) {
+                    $leaveType = $leave->is_paid ? 'payé' : 'non soldé';
+                    return response()->json([
+                        'message' => "Cet employé est en congé {$leaveType} le {$scheduleDate}. Impossible de modifier le planning."
+                    ], 422);
+                }
+            }
         }
 
         $updateData = $validated;
