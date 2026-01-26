@@ -27,6 +27,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\PayrollReportController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\SuperTaskController;
+use App\Http\Controllers\Api\LeaveController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -193,6 +194,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/super-tasks/my', [SuperTaskController::class, 'mySuperTasks']); // Mes super tâches
     Route::get('/super-tasks/has-pending', [SuperTaskController::class, 'hasPendingSuperTasks']); // Vérifier si l'utilisateur a des super tâches en attente
     Route::apiResource('super-tasks', SuperTaskController::class);
+    
+    // Routes pour les congés
+    Route::get('/leaves/my', [LeaveController::class, 'myLeaves']); // Mes congés
+    Route::get('/leaves/pending', [LeaveController::class, 'pending']); // Demandes en attente (admin)
+    Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve']); // Approuver un congé (admin)
+    Route::post('/leaves/{id}/reject', [LeaveController::class, 'reject']); // Rejeter un congé (admin)
+    Route::apiResource('leaves', LeaveController::class);
 });
 
 // Routes publiques pour les rapports de paie (accessible via token)

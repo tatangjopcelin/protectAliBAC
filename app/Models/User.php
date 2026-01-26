@@ -139,6 +139,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Store::class, 'created_by');
     }
 
+    public function leaves(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Leave::class);
+    }
+
     /**
      * Vérifie si l'utilisateur a une permission spécifique
      */
