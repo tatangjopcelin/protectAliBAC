@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             InitialDataSeeder::class,
             PermissionSeeder::class,
+            SubscriptionPlanSeeder::class,
         ]);
 
         User::factory()->create([

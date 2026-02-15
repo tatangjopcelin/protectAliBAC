@@ -30,7 +30,7 @@ class LeaveController extends Controller
         }
 
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne voit que ses propres congés
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('leaves')) {
             $query->where('user_id', $user->id);
         }
 
@@ -79,11 +79,11 @@ class LeaveController extends Controller
         ]);
 
         // Déterminer si c'est une demande d'employé ou une création par admin
-        $isAdmin = in_array($user->role, ['admin', 'chef', 'director']);
+        $hasLeavesPermission = $user->hasSharedPermission('leaves');
         $targetUserId = $validated['user_id'] ?? $user->id;
 
         // Si admin crée pour un employé, vérifier que l'employé appartient au même établissement
-        if ($isAdmin && isset($validated['user_id'])) {
+        if ($hasLeavesPermission && isset($validated['user_id'])) {
             $targetUser = User::findOrFail($validated['user_id']);
             if ($user->store_id && $targetUser->store_id !== $user->store_id) {
                 return response()->json(['message' => 'L\'employé n\'appartient pas à votre établissement'], 403);
@@ -107,11 +107,11 @@ class LeaveController extends Controller
             'start_date' => $startDate,
             'end_date' => $endDate,
             'number_of_days' => $numberOfDays,
-            'status' => $isAdmin && isset($validated['user_id']) ? 'approved' : 'pending',
-            'type' => $isAdmin && isset($validated['user_id']) ? 'created' : 'requested',
+            'status' => $hasLeavesPermission && isset($validated['user_id']) ? 'approved' : 'pending',
+            'type' => $hasLeavesPermission && isset($validated['user_id']) ? 'created' : 'requested',
             'created_by' => $user->id,
-            'approved_by' => ($isAdmin && isset($validated['user_id'])) ? $user->id : null,
-            'approved_at' => ($isAdmin && isset($validated['user_id'])) ? now() : null,
+            'approved_by' => ($hasLeavesPermission && isset($validated['user_id'])) ? $user->id : null,
+            'approved_at' => ($hasLeavesPermission && isset($validated['user_id'])) ? now() : null,
             'is_paid' => $validated['is_paid'] ?? true, // Par défaut, les congés sont payés
             'notes' => $validated['notes'] ?? null,
         ]);
@@ -137,7 +137,7 @@ class LeaveController extends Controller
         }
 
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que ses propres congés
-        if (!in_array($user->role, ['admin', 'chef', 'director']) && $leave->user_id !== $user->id) {
+        if (!$user->hasSharedPermission('leaves') && $leave->user_id !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -161,16 +161,25 @@ class LeaveController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        $isAdmin = in_array($user->role, ['admin', 'chef', 'director']);
-        $canUpdateAll = $isAdmin || $leave->created_by === $user->id;
+        $hasLeavesPermission = $user->hasSharedPermission('leaves');
+        $isCreator = $leave->created_by === $user->id;
+        $isBeneficiary = $leave->user_id === $user->id;
+        $canUpdateAsRequester = ($isCreator || $isBeneficiary) && $leave->status === 'pending';
 
-        // Validation selon les permissions
+        // Droit de modifier : permission congés OU (demandeur et congé encore en attente)
+        if (!$hasLeavesPermission && !$canUpdateAsRequester) {
+            return response()->json(['message' => 'Accès refusé. Vous ne pouvez modifier que votre propre demande de congé tant qu\'elle est en attente.'], 403);
+        }
+
+        $canUpdateAll = $hasLeavesPermission || $canUpdateAsRequester;
+
+        // Validation selon les permissions (demandeur en attente peut envoyer dates, is_paid, notes)
         $validated = $request->validate([
             'dates' => $canUpdateAll ? 'sometimes|array|min:1' : 'prohibited',
             'dates.*' => $canUpdateAll ? 'required|date' : 'prohibited',
-            'is_paid' => ($isAdmin && $leave->status === 'approved') ? 'nullable|boolean' : 'prohibited',
+            'is_paid' => $canUpdateAll ? 'nullable|boolean' : 'prohibited',
             'notes' => 'nullable|string',
-            'rejection_reason' => ($isAdmin && $leave->status === 'pending') ? 'nullable|string' : 'prohibited',
+            'rejection_reason' => ($hasLeavesPermission && $leave->status === 'pending') ? 'nullable|string' : 'prohibited',
         ]);
 
         // Si les dates sont modifiées, recalculer
@@ -207,8 +216,8 @@ class LeaveController extends Controller
         }
 
         // Seuls admin/chef/directeur ou le créateur peuvent supprimer
-        $isAdmin = in_array($user->role, ['admin', 'chef', 'director']);
-        if (!$isAdmin && $leave->created_by !== $user->id) {
+        $hasLeavesPermission = $user->hasSharedPermission('leaves');
+        if (!$hasLeavesPermission && $leave->created_by !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -228,7 +237,7 @@ class LeaveController extends Controller
         }
 
         // Seuls admin/chef/directeur peuvent approuver
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('leaves')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -245,6 +254,11 @@ class LeaveController extends Controller
             ], 400);
         }
 
+        // Seul l'admin peut approuver son propre congé ; chef/directeur ne peuvent approuver que les congés des autres
+        if (!$user->isAdmin() && $leave->user_id === $user->id) {
+            return response()->json(['message' => 'Vous ne pouvez pas approuver votre propre demande de congé. Seul l\'administrateur peut le faire.'], 403);
+        }
+
         $leave->update([
             'status' => 'approved',
             'approved_by' => $user->id,
@@ -258,7 +272,7 @@ class LeaveController extends Controller
     }
 
     /**
-     * Rejeter un congé (admin uniquement)
+     * Rejeter un congé (admin uniquement pour son propre congé)
      */
     public function reject(Request $request, string $id)
     {
@@ -268,7 +282,7 @@ class LeaveController extends Controller
         }
 
         // Seuls admin/chef/directeur peuvent rejeter
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('leaves')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -287,6 +301,11 @@ class LeaveController extends Controller
             return response()->json([
                 'message' => 'Ce congé n\'est pas en attente de validation'
             ], 400);
+        }
+
+        // Seul l'admin peut rejeter son propre congé ; chef/directeur ne peuvent rejeter que les congés des autres
+        if (!$user->isAdmin() && $leave->user_id === $user->id) {
+            return response()->json(['message' => 'Vous ne pouvez pas rejeter votre propre demande de congé. Seul l\'administrateur peut le faire.'], 403);
         }
 
         $leave->update([
@@ -329,7 +348,7 @@ class LeaveController extends Controller
         }
 
         // Seuls admin/chef/directeur peuvent voir les demandes en attente
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('leaves')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -344,5 +363,41 @@ class LeaveController extends Controller
         $leaves = $query->orderBy('created_at', 'asc')->get();
 
         return response()->json($leaves);
+    }
+
+    /**
+     * Nombre de congés approuvés/rejetés du demandeur non encore "vus" (pour le badge).
+     */
+    public function myDecidedUnseenCount(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $count = Leave::where('user_id', $user->id)
+            ->whereIn('status', ['approved', 'rejected'])
+            ->whereNull('seen_by_user_at')
+            ->count();
+
+        return response()->json(['count' => $count]);
+    }
+
+    /**
+     * Marquer les congés approuvés/rejetés du demandeur comme "vus" (appelé à l'ouverture de la page Congés).
+     */
+    public function markDecidedSeen(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        Leave::where('user_id', $user->id)
+            ->whereIn('status', ['approved', 'rejected'])
+            ->whereNull('seen_by_user_at')
+            ->update(['seen_by_user_at' => now()]);
+
+        return response()->json(['message' => 'ok']);
     }
 }

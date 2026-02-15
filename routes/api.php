@@ -29,6 +29,7 @@ use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\SuperTaskController;
 use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\AccountSettingsController;
+use App\Http\Controllers\Api\SubscriptionController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -40,7 +41,16 @@ Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum')
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/account-settings', [AccountSettingsController::class, 'show']);
     Route::put('/account-settings/profile', [AccountSettingsController::class, 'updateProfile']);
+    Route::put('/account-settings/avatar', [AccountSettingsController::class, 'updateAvatar']);
     Route::put('/account-settings/password', [AccountSettingsController::class, 'changePassword']);
+});
+
+// Abonnement (carte bancaire uniquement via Stripe Checkout)
+Route::middleware('auth:sanctum')->prefix('subscription')->group(function () {
+    Route::get('/plans', [SubscriptionController::class, 'plans']);
+    Route::post('/subscribe', [SubscriptionController::class, 'subscribe']);
+    Route::get('/status', [SubscriptionController::class, 'status']);
+    Route::post('/billing-portal', [SubscriptionController::class, 'billingPortal']);
 });
 
 // Routes de vérification d'email
@@ -146,6 +156,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Route sans paramètre doit être définie AVANT celle avec paramètre
     Route::put('/users/overtime-limit/all', [UserController::class, 'updateOvertimeLimitForAll']); // Modifier la limite pour tous (Admin uniquement)
     Route::put('/users/{id}/overtime-limit', [UserController::class, 'updateOvertimeLimit']); // Modifier la limite d'heures sup (Admin uniquement)
+    Route::get('/users/{id}/shared-permissions', [UserController::class, 'getSharedPermissions']);
+    Route::put('/users/{id}/shared-permissions', [UserController::class, 'updateSharedPermissions']);
 });
 
 // Routes pour la liste d'achats (tous les utilisateurs authentifiés peuvent ajouter)
@@ -196,6 +208,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Routes pour les tâches
     Route::get('/tasks/my', [TaskController::class, 'myTasks']); // Mes tâches
+    Route::get('/tasks/my-count', [TaskController::class, 'myTasksCount']); // Badge : nombre de tâches à faire
     Route::apiResource('tasks', TaskController::class);
     
     // Routes pour les super tâches
@@ -205,6 +218,8 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Routes pour les congés
     Route::get('/leaves/my', [LeaveController::class, 'myLeaves']); // Mes congés
+    Route::get('/leaves/my-decided-unseen-count', [LeaveController::class, 'myDecidedUnseenCount']); // Badge : nombre de réponses non vues
+    Route::post('/leaves/mark-decided-seen', [LeaveController::class, 'markDecidedSeen']); // Marquer les réponses comme vues
     Route::get('/leaves/pending', [LeaveController::class, 'pending']); // Demandes en attente (admin)
     Route::post('/leaves/{id}/approve', [LeaveController::class, 'approve']); // Approuver un congé (admin)
     Route::post('/leaves/{id}/reject', [LeaveController::class, 'reject']); // Rejeter un congé (admin)

@@ -24,7 +24,7 @@ class RoleController extends Controller
      */
     public function rolePermissions(string $role)
     {
-        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director'];
+        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine'];
         if (!in_array($role, $validRoles)) {
             return response()->json(['message' => 'Rôle invalide'], 400);
         }
@@ -45,7 +45,7 @@ class RoleController extends Controller
      */
     public function assignPermission(Request $request, string $role)
     {
-        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director'];
+        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine'];
         if (!in_array($role, $validRoles)) {
             return response()->json(['message' => 'Rôle invalide'], 400);
         }
@@ -75,7 +75,7 @@ class RoleController extends Controller
      */
     public function revokePermission(Request $request, string $role, string $permissionId)
     {
-        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director'];
+        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine'];
         if (!in_array($role, $validRoles)) {
             return response()->json(['message' => 'Rôle invalide'], 400);
         }
@@ -103,7 +103,7 @@ class RoleController extends Controller
      */
     public function usersByRole(string $role)
     {
-        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director'];
+        $validRoles = ['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine'];
         if (!in_array($role, $validRoles)) {
             return response()->json(['message' => 'Rôle invalide'], 400);
         }

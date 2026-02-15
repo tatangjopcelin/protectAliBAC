@@ -7,11 +7,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Laravel\Cashier\Billable;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens;
+    use HasFactory, Notifiable, HasApiTokens, Billable;
 
     /**
      * The attributes that are mass assignable.
@@ -22,8 +23,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'phone',
+        'avatar',
         'password',
         'role',
+        'shared_permission_overrides',
         'store_id',
         'zone_id',
         'max_overtime_hours',
@@ -57,7 +60,46 @@ class User extends Authenticatable implements MustVerifyEmail
             'max_overtime_hours' => 'decimal:2',
             'clock_in_code_expires_at' => 'datetime',
             'email_verification_code_expires_at' => 'datetime',
+            'shared_permission_overrides' => 'array',
         ];
+    }
+
+    /** Clés des permissions partagées (admin peut les activer/désactiver pour director/chef) */
+    public const SHARED_PERMISSIONS = ['planning', 'leaves', 'time_entry', 'tasks'];
+
+    /**
+     * Vérifie si l'utilisateur a la permission partagée (pour director/chef, selon les overrides admin).
+     */
+    public function hasSharedPermission(string $key): bool
+    {
+        if ($this->role === 'admin') {
+            return true;
+        }
+        if ($this->role === 'machine') {
+            return in_array($key, ['planning', 'time_entry'], true);
+        }
+        if (!in_array($this->role, ['director', 'chef'], true)) {
+            return false;
+        }
+        $overrides = $this->shared_permission_overrides ?? [];
+        return array_key_exists($key, $overrides) ? (bool) $overrides[$key] : true;
+    }
+
+    /** Retourne les overrides actuels pour l’affichage (admin). */
+    public function getSharedPermissionOverrides(): array
+    {
+        if ($this->role === 'machine') {
+            return array_combine(
+                self::SHARED_PERMISSIONS,
+                array_map(fn ($k) => in_array($k, ['planning', 'time_entry'], true), self::SHARED_PERMISSIONS)
+            );
+        }
+        $overrides = $this->shared_permission_overrides ?? [];
+        $result = [];
+        foreach (self::SHARED_PERMISSIONS as $key) {
+            $result[$key] = array_key_exists($key, $overrides) ? (bool) $overrides[$key] : true;
+        }
+        return $result;
     }
 
     public function stockMovements(): \Illuminate\Database\Eloquent\Relations\HasMany
@@ -113,6 +155,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isDirector(): bool
     {
         return $this->role === 'director';
+    }
+
+    public function isMachine(): bool
+    {
+        return $this->role === 'machine';
     }
 
     public function notificationPreferences(): \Illuminate\Database\Eloquent\Relations\HasMany

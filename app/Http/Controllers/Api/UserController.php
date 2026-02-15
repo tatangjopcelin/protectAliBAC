@@ -13,16 +13,25 @@ class UserController extends Controller
 {
     /**
      * Liste tous les utilisateurs
+     * Autorisé si l'utilisateur a une des permissions qui nécessitent de choisir un employé
+     * (planning, leaves, time_entry, tasks pour les listes déroulantes). La page Utilisateurs reste réservée à l'admin.
      */
     public function index(Request $request)
     {
-        // Seul l'admin, le chef et le directeur peuvent voir tous les utilisateurs
-        if (!$request->user()?->isAdmin() && !$request->user()?->isChef() && !$request->user()?->isDirector()) {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+        $canList = $user->isAdmin()
+            || $user->hasSharedPermission('planning')
+            || $user->hasSharedPermission('leaves')
+            || $user->hasSharedPermission('time_entry')
+            || $user->hasSharedPermission('tasks');
+        if (!$canList) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        $currentUser = $request->user();
-        $query = User::query()->where('store_id', $currentUser->store_id);
+        $query = User::query()->where('store_id', $user->store_id);
 
         if ($request->has('role')) {
             $query->where('role', $request->role);
@@ -71,8 +80,8 @@ class UserController extends Controller
     {
         $currentUser = request()->user();
         
-        // Seul l'admin, le chef et le directeur peuvent voir les détails d'un utilisateur
-        if (!$currentUser?->isAdmin() && !$currentUser?->isChef() && !$currentUser?->isDirector()) {
+        // Seul l'admin peut voir les détails d'un utilisateur (page gestion)
+        if (!$currentUser?->isAdmin()) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -101,8 +110,8 @@ class UserController extends Controller
      */
     public function store(Request $request)
     {
-        // Seul l'admin, le chef et le directeur peuvent créer des utilisateurs
-        if (!$request->user()?->isAdmin() && !$request->user()?->isChef() && !$request->user()?->isDirector()) {
+        // Seul l'admin peut créer des utilisateurs
+        if (!$request->user()?->isAdmin()) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -113,7 +122,7 @@ class UserController extends Controller
             'role' => [
                 'required',
                 'string',
-                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director']),
+                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
             'zone_id' => 'nullable|exists:zones,id',
         ]);
@@ -160,8 +169,8 @@ class UserController extends Controller
     {
         $currentUser = $request->user();
         
-        // Seul l'admin, le chef et le directeur peuvent modifier des utilisateurs
-        if (!$currentUser?->isAdmin() && !$currentUser?->isChef() && !$currentUser?->isDirector()) {
+        // Seul l'admin peut modifier des utilisateurs
+        if (!$currentUser?->isAdmin()) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -182,7 +191,7 @@ class UserController extends Controller
             'role' => [
                 'sometimes',
                 'string',
-                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director']),
+                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
             'zone_id' => 'nullable|exists:zones,id',
         ]);
@@ -248,7 +257,7 @@ class UserController extends Controller
             'role' => [
                 'required',
                 'string',
-                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director']),
+                Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
         ]);
 
@@ -366,6 +375,76 @@ class UserController extends Controller
                 'email' => $targetUser->email,
                 'max_overtime_hours' => $targetUser->max_overtime_hours,
             ],
+        ]);
+    }
+
+    /**
+     * Récupérer les permissions partagées d'un utilisateur (admin uniquement, pour director/chef)
+     */
+    public function getSharedPermissions(string $id)
+    {
+        $currentUser = request()->user();
+        if (!$currentUser?->isAdmin()) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
+
+        if (!in_array($user->role, ['director', 'chef'], true)) {
+            return response()->json([
+                'message' => 'Les permissions partagées ne s\'appliquent qu\'aux rôles Directeur et Chef.',
+                'permissions' => null,
+            ], 400);
+        }
+
+        return response()->json([
+            'user_id' => $user->id,
+            'user_name' => $user->name,
+            'role' => $user->role,
+            'permissions' => $user->getSharedPermissionOverrides(),
+        ]);
+    }
+
+    /**
+     * Mettre à jour les permissions partagées d'un utilisateur (admin uniquement)
+     */
+    public function updateSharedPermissions(Request $request, string $id)
+    {
+        $currentUser = request()->user();
+        if (!$currentUser?->isAdmin()) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $user = User::where('id', $id)
+            ->where('store_id', $currentUser->store_id)
+            ->firstOrFail();
+
+        if (!in_array($user->role, ['director', 'chef'], true)) {
+            return response()->json(['message' => 'Les permissions partagées ne s\'appliquent qu\'aux rôles Directeur et Chef.'], 400);
+        }
+
+        $validated = $request->validate([
+            'permissions' => 'required|array',
+            'permissions.planning' => 'boolean',
+            'permissions.leaves' => 'boolean',
+            'permissions.time_entry' => 'boolean',
+            'permissions.tasks' => 'boolean',
+        ]);
+
+        $overrides = [];
+        foreach (User::SHARED_PERMISSIONS as $key) {
+            if (array_key_exists($key, $validated['permissions'])) {
+                $overrides[$key] = (bool) $validated['permissions'][$key];
+            }
+        }
+        $user->shared_permission_overrides = $overrides;
+        $user->save();
+
+        return response()->json([
+            'message' => 'Permissions mises à jour',
+            'permissions' => $user->getSharedPermissionOverrides(),
         ]);
     }
 }

@@ -27,7 +27,7 @@ class TaskController extends Controller
 
         // Si admin/chef/directeur, voir toutes les tâches de l'établissement
         // Sinon, voir seulement ses propres tâches
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             $query->where('assigned_to', $user->id);
         }
 
@@ -55,7 +55,7 @@ class TaskController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent créer des tâches
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -116,7 +116,7 @@ class TaskController extends Controller
 
         // L'employé assigné peut mettre à jour le statut et les notes
         // Admin/chef/directeur peuvent tout modifier
-        $canUpdateAll = in_array($user->role, ['admin', 'chef', 'director']) || $task->assigned_by === $user->id;
+        $canUpdateAll = $user->hasSharedPermission('tasks') || $task->assigned_by === $user->id;
         $canUpdateStatus = $task->assigned_to === $user->id || $canUpdateAll;
         // Seuls le créateur et les admins/chefs/directeurs peuvent annuler une tâche
         $canCancel = $canUpdateAll;
@@ -168,7 +168,7 @@ class TaskController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent supprimer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -197,5 +197,22 @@ class TaskController extends Controller
             ->get();
 
         return response()->json($tasks);
+    }
+
+    /**
+     * Nombre de tâches assignées à l'utilisateur (pending + in_progress) pour le badge.
+     */
+    public function myTasksCount(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $count = Task::where('assigned_to', $user->id)
+            ->whereIn('status', ['pending', 'in_progress'])
+            ->count();
+
+        return response()->json(['count' => $count]);
     }
 }

@@ -22,6 +22,7 @@ class Leave extends Model
         'is_paid',
         'notes',
         'rejection_reason',
+        'seen_by_user_at',
     ];
 
     protected $casts = [
@@ -30,6 +31,7 @@ class Leave extends Model
         'end_date' => 'date',
         'approved_at' => 'datetime',
         'is_paid' => 'boolean',
+        'seen_by_user_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

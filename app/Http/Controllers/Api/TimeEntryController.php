@@ -58,7 +58,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent pointer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé. Seuls les administrateurs, chefs et directeurs peuvent pointer.'], 403);
         }
 
@@ -143,7 +143,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent pointer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé. Seuls les administrateurs, chefs et directeurs peuvent pointer.'], 403);
         }
 
@@ -255,7 +255,7 @@ class TimeEntryController extends Controller
         }
 
         // Un utilisateur peut voir ses propres pointages, ou admin/chef/directeur peuvent voir tous
-        if ($user->id != $userId && !in_array($user->role, ['admin', 'chef', 'director'])) {
+        if ($user->id != $userId && !$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -290,7 +290,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent modifier des pointages
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -333,7 +333,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent créer des pointages manuels
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -459,7 +459,7 @@ class TimeEntryController extends Controller
         }
 
         // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que ses propres statistiques
-        $userId = $request->has('user_id') && in_array($user->role, ['admin', 'chef', 'director'])
+        $userId = $request->has('user_id') && $user->hasSharedPermission('time_entry')
             ? $request->user_id
             : $user->id;
 
@@ -614,7 +614,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent envoyer des codes
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -741,7 +741,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent pointer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -1004,7 +1004,7 @@ class TimeEntryController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent pointer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 

@@ -58,8 +58,8 @@ class ScheduleController extends Controller
             $query->where('store_id', $user->store_id);
         }
 
-        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Si l'utilisateur n'a pas la permission planning, il ne peut voir que son propre planning
+        if (!$user->hasSharedPermission('planning')) {
             $query->where('user_id', $user->id);
         }
 
@@ -110,8 +110,8 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seuls admin, chef et directeur peuvent créer des plannings
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Seuls les utilisateurs avec permission planning peuvent créer des plannings
+        if (!$user->hasSharedPermission('planning')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -219,8 +219,8 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
-        if (!in_array($user->role, ['admin', 'chef', 'director']) && $schedule->user_id !== $user->id) {
+        // Si l'utilisateur n'a pas la permission planning, il ne peut voir que son propre planning
+        if (!$user->hasSharedPermission('planning') && $schedule->user_id !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -245,9 +245,9 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
-        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut modifier que son propre planning
+        // Si l'utilisateur n'a pas la permission planning, il ne peut modifier que son propre planning
         // et avec des restrictions (pas de modification de user_id, date, status)
-        $isAdmin = in_array($user->role, ['admin', 'chef', 'director']);
+        $isAdmin = $user->hasSharedPermission('planning');
         if (!$isAdmin && $schedule->user_id !== $user->id) {
             return response()->json(['message' => 'Vous ne pouvez modifier que votre propre planning'], 403);
         }
@@ -342,8 +342,8 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seuls admin, chef et directeur peuvent supprimer des plannings
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Seuls les utilisateurs avec permission planning peuvent supprimer des plannings
+        if (!$user->hasSharedPermission('planning')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -384,8 +384,8 @@ class ScheduleController extends Controller
             $query->where('store_id', $user->store_id);
         }
 
-        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Si l'utilisateur n'a pas la permission planning, il ne peut voir que son propre planning
+        if (!$user->hasSharedPermission('planning')) {
             $query->where('user_id', $user->id);
         } elseif ($request->has('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -422,8 +422,8 @@ class ScheduleController extends Controller
         $query = Schedule::with(['user', 'creator'])
             ->whereBetween('date', [$month, $monthEnd]);
 
-        // Si l'utilisateur n'est pas admin/chef/directeur, il ne peut voir que son propre planning
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Si l'utilisateur n'a pas la permission planning, il ne peut voir que son propre planning
+        if (!$user->hasSharedPermission('planning')) {
             $query->where('user_id', $user->id);
         } elseif ($request->has('user_id')) {
             $query->where('user_id', $request->user_id);
@@ -450,8 +450,8 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seuls admin, chef et directeur peuvent valider
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Seuls les utilisateurs avec permission planning peuvent valider
+        if (!$user->hasSharedPermission('planning')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -485,8 +485,8 @@ class ScheduleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seuls admin, chef et directeur peuvent publier
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        // Seuls les utilisateurs avec permission planning peuvent publier
+        if (!$user->hasSharedPermission('planning')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 

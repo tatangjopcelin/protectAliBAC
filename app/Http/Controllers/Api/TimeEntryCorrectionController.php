@@ -25,7 +25,7 @@ class TimeEntryCorrectionController extends Controller
         $query = TimeEntryCorrection::with(['timeEntry.user', 'timeEntry.schedule', 'user', 'reviewer']);
 
         // Si admin/chef/directeur, voir toutes les demandes en attente par défaut
-        if (in_array($user->role, ['admin', 'chef', 'director'])) {
+        if ($user->hasSharedPermission('time_entry')) {
             if ($request->has('status')) {
                 $query->where('status', $request->status);
             } else {
@@ -115,7 +115,7 @@ class TimeEntryCorrectionController extends Controller
         $correction = TimeEntryCorrection::with(['timeEntry.user', 'timeEntry.schedule', 'user', 'reviewer'])->findOrFail($id);
 
         // Vérifier les permissions
-        if (!in_array($user->role, ['admin', 'chef', 'director']) && $correction->user_id !== $user->id) {
+        if (!$user->hasSharedPermission('time_entry') && $correction->user_id !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -133,7 +133,7 @@ class TimeEntryCorrectionController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent approuver/rejeter
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('time_entry')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -184,7 +184,7 @@ class TimeEntryCorrectionController extends Controller
         $correction = TimeEntryCorrection::findOrFail($id);
 
         // Vérifier que l'utilisateur est le propriétaire ou un admin
-        if (!in_array($user->role, ['admin', 'chef', 'director']) && $correction->user_id !== $user->id) {
+        if (!$user->hasSharedPermission('time_entry') && $correction->user_id !== $user->id) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 

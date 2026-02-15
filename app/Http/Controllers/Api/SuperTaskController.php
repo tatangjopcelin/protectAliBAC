@@ -52,7 +52,7 @@ class SuperTaskController extends Controller
 
         // Si admin/chef/directeur, voir toutes les super tâches
         // Sinon, voir seulement ses propres super tâches
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             $query->where('assigned_to', $user->id);
         }
 
@@ -128,7 +128,7 @@ class SuperTaskController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent créer des super tâches
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
@@ -229,7 +229,7 @@ class SuperTaskController extends Controller
 
         // L'employé assigné peut mettre à jour le statut et les champs spécifiques
         // Admin/chef/directeur peuvent tout modifier
-        $canUpdateAll = in_array($user->role, ['admin', 'chef', 'director']) || $superTask->assigned_by === $user->id;
+        $canUpdateAll = $user->hasSharedPermission('tasks') || $superTask->assigned_by === $user->id;
         $canUpdateStatus = $superTask->assigned_to === $user->id || $canUpdateAll;
 
         $validated = $request->validate([
@@ -352,7 +352,7 @@ class SuperTaskController extends Controller
         }
 
         // Si pas admin/chef/directeur, vérifier que c'est sa super tâche
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             $superTask->where('assigned_to', $user->id);
         }
 
@@ -375,7 +375,7 @@ class SuperTaskController extends Controller
         }
 
         // Seuls admin, chef et directeur peuvent supprimer
-        if (!in_array($user->role, ['admin', 'chef', 'director'])) {
+        if (!$user->hasSharedPermission('tasks')) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 

@@ -51,15 +51,24 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth-token')->plainTextToken;
 
+        $sharedPermissions = null;
+        if ($user->role === 'admin') {
+            $sharedPermissions = array_fill_keys(\App\Models\User::SHARED_PERMISSIONS, true);
+        } elseif (in_array($user->role, ['director', 'chef'], true)) {
+            $sharedPermissions = $user->getSharedPermissionOverrides();
+        }
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
                 'phone' => $user->phone,
+                'avatar' => $user->avatar,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'store_id' => $user->store_id,
+                'shared_permissions' => $sharedPermissions,
             ],
             'token' => $token,
         ]);
@@ -88,7 +97,7 @@ class AuthController extends Controller
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255',
                 'password' => 'required|string|min:8|confirmed',
-                'role' => 'nullable|string|in:admin,chef,cook,storekeeper,accountant,butcher,server,director',
+                'role' => 'nullable|string|in:admin,chef,cook,storekeeper,accountant,butcher,server,director,machine',
                 'zone_id' => 'nullable|integer|exists:zones,id',
                 
                 // Champs pour création d'établissement
@@ -414,11 +423,18 @@ class AuthController extends Controller
     public function user(Request $request)
     {
         $user = $request->user()->load('store');
+        $sharedPermissions = null;
+        if ($user->role === 'admin') {
+            $sharedPermissions = array_fill_keys(\App\Models\User::SHARED_PERMISSIONS, true);
+        } elseif (in_array($user->role, ['director', 'chef'], true)) {
+            $sharedPermissions = $user->getSharedPermissionOverrides();
+        }
         return response()->json([
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
             'phone' => $user->phone,
+            'avatar' => $user->avatar,
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'store_id' => $user->store_id,
@@ -428,6 +444,7 @@ class AuthController extends Controller
                 'name' => $user->store->name,
                 'establishment_code' => $user->store->establishment_code,
             ] : null,
+            'shared_permissions' => $sharedPermissions,
         ]);
     }
 

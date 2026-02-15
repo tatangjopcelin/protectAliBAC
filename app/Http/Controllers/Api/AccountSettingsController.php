@@ -22,6 +22,7 @@ class AccountSettingsController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'phone' => $user->phone,
+            'avatar' => $user->avatar,
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'store_id' => $user->store_id,
@@ -62,6 +63,26 @@ class AccountSettingsController extends Controller
                 'email' => $user->email,
                 'phone' => $user->phone,
             ],
+        ]);
+    }
+
+    /**
+     * Mettre à jour la photo de profil (base64)
+     */
+    public function updateAvatar(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'avatar' => 'nullable|string',
+        ]);
+
+        $user->avatar = $validated['avatar'] ?? null;
+        $user->save();
+
+        return response()->json([
+            'message' => 'Photo de profil mise à jour',
+            'avatar' => $user->avatar,
         ]);
     }
 
