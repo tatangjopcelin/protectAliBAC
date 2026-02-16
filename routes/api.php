@@ -51,6 +51,8 @@ Route::middleware('auth:sanctum')->prefix('subscription')->group(function () {
     Route::post('/subscribe', [SubscriptionController::class, 'subscribe']);
     Route::get('/status', [SubscriptionController::class, 'status']);
     Route::post('/billing-portal', [SubscriptionController::class, 'billingPortal']);
+    Route::post('/verify-checkout-session', [SubscriptionController::class, 'verifyCheckoutSession']);
+    Route::post('/sync-from-stripe', [SubscriptionController::class, 'syncFromStripe']);
 });
 
 // Routes de vérification d'email

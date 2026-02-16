@@ -270,6 +270,7 @@ class AuthController extends Controller
                         'phone' => $pendingRegistration->store_phone,
                         'establishment_code' => $establishmentCode,
                         'is_active' => true,
+                        'trial_ends_at' => now()->addDays(15),
                     ]);
                     
                     // Créer l'utilisateur admin

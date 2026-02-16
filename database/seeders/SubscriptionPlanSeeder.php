@@ -11,6 +11,16 @@ class SubscriptionPlanSeeder extends Seeder
     {
         $plans = [
             [
+                'name' => 'Gratuit',
+                'slug' => 'gratuit',
+                'stripe_price_id' => null,
+                'amount_cents' => 0,
+                'interval' => 'month',
+                'features' => ['15 jours d\'essai', 'Jusqu\'à 3 utilisateurs', 'Produits & stock', 'Alertes', 'Liste de courses', 'Planning', 'Pointage', 'Contrôle des produits'],
+                'sort_order' => 0,
+                'is_active' => true,
+            ],
+            [
                 'name' => 'Essentiel',
                 'slug' => 'essentiel',
                 'stripe_price_id' => env('STRIPE_PRICE_ESSENTIEL', null),
@@ -34,7 +44,7 @@ class SubscriptionPlanSeeder extends Seeder
                 'stripe_price_id' => env('STRIPE_PRICE_PRO_ANNUEL', null),
                 'amount_cents' => 49900,
                 'interval' => 'year',
-                'features' => ['Tout Pro', '2 mois offerts', 'Facturation annuelle'],
+                'features' => ['Tout Pro', '2 mois offerts', 'Facturation annuelle', 'Économiser jusqu\'à 100 €'],
                 'sort_order' => 3,
             ],
         ];

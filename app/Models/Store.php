@@ -16,10 +16,12 @@ class Store extends Model
         'is_active',
         'establishment_code',
         'created_by',
+        'trial_ends_at',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'trial_ends_at' => 'datetime',
     ];
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\SubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -132,6 +133,47 @@ class UserController extends Controller
             return response()->json([
                 'message' => 'Accès refusé. Seul l\'admin peut créer un utilisateur avec le rôle admin.'
             ], 403);
+        }
+
+        // Limite du plan d'abonnement ou de l'essai gratuit (nombre d'utilisateurs)
+        $currentUser = $request->user();
+        $storeId = $currentUser->store_id;
+        $maxUsers = null;
+
+        if ($currentUser->subscribed('default')) {
+            $subscription = $currentUser->subscription('default');
+            $stripePrice = $subscription?->stripe_price;
+            if ($stripePrice) {
+                $plan = SubscriptionPlan::where('stripe_price_id', $stripePrice)->first();
+                if ($plan) {
+                    $limits = SubscriptionPlan::getLimitsBySlug($plan->slug);
+                    $maxUsers = $limits['max_users'] ?? null;
+                }
+            }
+        } else {
+            // Pas d'abonnement Stripe : plan gratuit (essai 15 jours de l'établissement)
+            $currentUser->load('store');
+            $store = $currentUser->store;
+            if ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
+                $limits = SubscriptionPlan::getLimitsBySlug('gratuit');
+                $maxUsers = $limits['max_users'] ?? null;
+            } else {
+                return response()->json([
+                    'message' => 'Période d\'essai terminée. Abonnez-vous pour continuer à ajouter des utilisateurs.',
+                    'trial_expired' => true,
+                ], 422);
+            }
+        }
+
+        if ($maxUsers !== null) {
+            $currentCount = User::where('store_id', $storeId)->count();
+            if ($currentCount >= $maxUsers) {
+                return response()->json([
+                    'message' => "Limite du plan atteinte ({$maxUsers} utilisateur(s)). Passez au plan Pro pour ajouter plus d'utilisateurs.",
+                    'limit_reached' => true,
+                    'max_users' => $maxUsers,
+                ], 422);
+            }
         }
 
         $user = User::create([
