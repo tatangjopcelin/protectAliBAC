@@ -17,6 +17,7 @@ class Store extends Model
         'establishment_code',
         'created_by',
         'trial_ends_at',
+        'clock_in_verification_method',
     ];
 
     protected $casts = [

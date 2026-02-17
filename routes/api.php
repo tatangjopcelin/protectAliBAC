@@ -64,6 +64,10 @@ Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name
 Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
 
 // Routes publiques (peut être sécurisées plus tard)
+// Route spécifique AVANT apiResource pour éviter les conflits de routage
+Route::middleware('auth:sanctum')->group(function () {
+    Route::put('/stores/clock-in-verification-method', [StoreController::class, 'updateClockInVerificationMethod']); // Admin: changer méthode de vérification
+});
 Route::apiResource('stores', StoreController::class);
 Route::apiResource('categories', CategoryController::class);
 Route::apiResource('suppliers', SupplierController::class);
@@ -187,10 +191,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les pointages (doivent être définies AVANT apiResource)
     Route::post('/time-entries/send-clock-in-code', [TimeEntryController::class, 'sendClockInCode']); // Envoyer code de vérification
     Route::post('/time-entries/clock-in-with-code', [TimeEntryController::class, 'clockInWithCode']); // Pointer avec code
+    Route::post('/time-entries/clock-in-with-photo', [TimeEntryController::class, 'clockInWithPhoto']); // Pointer avec photo
     Route::post('/time-entries/clock-out-for-user', [TimeEntryController::class, 'clockOutForUser']); // Pointer départ pour un utilisateur
     Route::post('/time-entries/clock-in', [TimeEntryController::class, 'clockIn']); // Pointer l'arrivée
     Route::post('/time-entries/clock-out', [TimeEntryController::class, 'clockOut']); // Pointer le départ
     Route::post('/time-entries/create-manual', [TimeEntryController::class, 'createManual']); // Créer un pointage manuel
+    Route::post('/time-entries/check-overtime', [TimeEntryController::class, 'checkOvertime']); // Vérifier et clôturer les pointages qui dépassent la limite heures sup
     Route::get('/time-entries/today', [TimeEntryController::class, 'getTodayEntry']); // Pointage du jour
     Route::get('/time-entries/user/{userId}', [TimeEntryController::class, 'getUserEntries']); // Historique des pointages
     Route::get('/time-entries/statistics', [TimeEntryController::class, 'getStatistics']); // Statistiques
@@ -207,6 +213,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour la distribution des rapports de paie (admin uniquement)
     Route::post('/payroll-reports/distribute', [PayrollReportController::class, 'distribute']); // Distribuer les rapports
     Route::get('/payroll-reports/statuses', [PayrollReportController::class, 'getStatuses']); // Récupérer les statuts des rapports
+    Route::get('/payroll-reports/decided-unseen-count', [PayrollReportController::class, 'getDecidedUnseenCount']); // Badge : nombre de rapports confirmés/rejetés non vus
+    Route::post('/payroll-reports/mark-decided-seen', [PayrollReportController::class, 'markDecidedSeen']); // Marquer les rapports comme vus par l'admin
     
     // Routes pour les tâches
     Route::get('/tasks/my', [TaskController::class, 'myTasks']); // Mes tâches

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\TimeEntry;
 use App\Models\Schedule;
+use App\Services\OvertimeCheckService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -754,6 +755,14 @@ class TimeEntryController extends Controller
 
         $targetUser = \App\Models\User::findOrFail($validated['user_id']);
         
+        // Vérifier que le store utilise bien la méthode code
+        $store = $targetUser->store;
+        if (!$store || $store->clock_in_verification_method !== 'code') {
+            return response()->json([
+                'message' => 'Cette méthode de vérification n\'est pas activée pour cet établissement.'
+            ], 400);
+        }
+        
         // Recharger l'utilisateur depuis la base de données pour s'assurer d'avoir les dernières données
         $targetUser->refresh();
 
@@ -994,6 +1003,174 @@ class TimeEntryController extends Controller
     }
 
     /**
+     * Pointer l'arrivée avec une photo (au lieu du code)
+     */
+    public function clockInWithPhoto(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        // Seuls admin, chef et directeur peuvent pointer
+        if (!$user->hasSharedPermission('time_entry')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'required|exists:users,id',
+            'photo' => 'required|string', // Photo en base64
+            'location' => 'nullable|string',
+            'notes' => 'nullable|string',
+        ]);
+
+        $targetUser = \App\Models\User::findOrFail($validated['user_id']);
+        
+        // Vérifier que le store utilise bien la méthode photo
+        $store = $targetUser->store;
+        if (!$store || $store->clock_in_verification_method !== 'photo') {
+            return response()->json([
+                'message' => 'Cette méthode de vérification n\'est pas activée pour cet établissement.'
+            ], 400);
+        }
+
+        $today = Carbon::today();
+        
+        // Vérifier si un pointage existe déjà pour aujourd'hui et n'est pas terminé
+        $existingEntry = TimeEntry::where('user_id', $targetUser->id)
+            ->whereDate('date', $today)
+            ->whereNotNull('clock_in')
+            ->whereNull('clock_out')
+            ->first();
+
+        if ($existingEntry) {
+            return response()->json([
+                'message' => 'Vous avez déjà un pointage en cours aujourd\'hui. Veuillez pointer votre départ avant de commencer un nouveau pointage.',
+                'time_entry' => $existingEntry->load(['user', 'schedule'])
+            ], 400);
+        }
+
+        // Créer le pointage avec la photo (même logique que clockInWithCode)
+        $clockInTime = now();
+        $schedules = Schedule::where('user_id', $targetUser->id)
+            ->whereDate('date', $today)
+            ->where('status', '!=', 'cancelled')
+            ->where('status', '!=', 'request')
+            ->orderBy('start_time', 'asc')
+            ->get();
+        
+        $schedule = null;
+        $bestSchedule = null;
+        $minDiff = PHP_INT_MAX;
+        
+        foreach ($schedules as $s) {
+            $hasCompletedEntry = TimeEntry::where('user_id', $targetUser->id)
+                ->whereDate('date', $today)
+                ->where('schedule_id', $s->id)
+                ->whereNotNull('clock_in')
+                ->whereNotNull('clock_out')
+                ->exists();
+            
+            if (!$hasCompletedEntry) {
+                $scheduleStart = Carbon::parse($s->date->format('Y-m-d') . ' ' . $s->start_time);
+                $diff = abs($clockInTime->diffInMinutes($scheduleStart));
+                
+                if ($scheduleStart <= $clockInTime || $diff < $minDiff) {
+                    if ($diff < $minDiff) {
+                        $minDiff = $diff;
+                        $bestSchedule = $s;
+                    }
+                }
+            }
+        }
+        
+        $schedule = $bestSchedule;
+
+        $hasCompletedEntryToday = TimeEntry::where('user_id', $targetUser->id)
+            ->whereDate('date', $today)
+            ->whereNotNull('clock_in')
+            ->whereNotNull('clock_out')
+            ->exists();
+
+        $scheduleId = null;
+
+        if ($schedule) {
+            if ($hasCompletedEntryToday) {
+                $completedEntry = TimeEntry::where('user_id', $targetUser->id)
+                    ->whereDate('date', $today)
+                    ->whereNotNull('clock_in')
+                    ->whereNotNull('clock_out')
+                    ->where('schedule_id', $schedule->id)
+                    ->first();
+                
+                if ($completedEntry) {
+                    $scheduleId = null;
+                } else {
+                    $scheduleId = $schedule->id;
+                }
+            } else {
+                $scheduleId = $schedule->id;
+            }
+        }
+
+        if (!$scheduleId) {
+            $existingRequestSchedule = Schedule::where('user_id', $targetUser->id)
+                ->whereDate('date', $today)
+                ->where('status', 'request')
+                ->first();
+            
+            if (!$existingRequestSchedule) {
+                $startTime = $clockInTime->format('H:i:s');
+                $defaultEndTime = $clockInTime->copy()->addHours(4)->format('H:i:s');
+                
+                $requestSchedule = Schedule::create([
+                    'user_id' => $targetUser->id,
+                    'store_id' => $targetUser->store_id,
+                    'date' => $today,
+                    'start_time' => $startTime,
+                    'end_time' => $defaultEndTime,
+                    'status' => 'request',
+                    'notes' => 'Planning créé automatiquement suite au pointage d\'arrivée (en attente de validation)',
+                    'created_by' => $request->user()?->id,
+                ]);
+                
+                $scheduleId = $requestSchedule->id;
+            } else {
+                $scheduleId = $existingRequestSchedule->id;
+            }
+        }
+
+        // Créer le pointage avec la photo
+        $timeEntry = TimeEntry::create([
+            'user_id' => $targetUser->id,
+            'store_id' => $targetUser->store_id,
+            'date' => $today,
+            'schedule_id' => $scheduleId,
+            'clock_in' => $clockInTime,
+            'clock_in_photo' => $validated['photo'], // Stocker la photo en base64
+            'location' => $validated['location'] ?? null,
+            'notes' => $validated['notes'] ?? null,
+            'status' => 'present',
+        ]);
+
+        // Vérifier si l'utilisateur est en retard
+        if ($schedule) {
+            $scheduledStart = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->start_time);
+            $actualStart = Carbon::parse($timeEntry->clock_in);
+            
+            if ($actualStart->gt($scheduledStart->addMinutes(15))) {
+                $timeEntry->status = 'late';
+                $timeEntry->save();
+            }
+        }
+
+        return response()->json([
+            'message' => 'Pointage d\'arrivée enregistré avec photo',
+            'time_entry' => $timeEntry->load(['user', 'schedule'])
+        ], 201);
+    }
+
+    /**
      * Pointer le départ pour un utilisateur spécifique (admin/chef/director)
      */
     public function clockOutForUser(Request $request)
@@ -1012,6 +1189,7 @@ class TimeEntryController extends Controller
             'user_id' => 'required|exists:users,id',
             'break_duration' => 'nullable|numeric|min:0', // Maintenant en minutes
             'notes' => 'nullable|string',
+            'signature' => 'required|string', // Signature en base64
         ]);
 
         $targetUser = \App\Models\User::findOrFail($validated['user_id']);
@@ -1134,6 +1312,9 @@ class TimeEntryController extends Controller
         $timeEntry->clock_out = $clockOutTime;
         // break_duration est maintenant en minutes (pas de conversion nécessaire)
         $timeEntry->break_duration = $validated['break_duration'] ?? $timeEntry->break_duration;
+        
+        // Stocker la signature de départ
+        $timeEntry->clock_out_signature = $validated['signature'];
 
         // Calculer les heures travaillées
         $timeEntry->hours_worked = $timeEntry->calculateHoursWorked();
@@ -1147,6 +1328,29 @@ class TimeEntryController extends Controller
             'message' => 'Pointage de départ enregistré',
             'time_entry' => $timeEntry,
             'hours_worked' => $timeEntry->hours_worked,
+        ]);
+    }
+
+    /**
+     * Vérifie les pointages en cours et complète automatiquement ceux qui ont dépassé
+     * la limite d'heures supplémentaires (comme si l'employé avait pointé le départ).
+     * Réservé aux rôles avec permission time_entry (admin, chef, directeur).
+     */
+    public function checkOvertime(Request $request, OvertimeCheckService $overtimeCheck)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (!$user->hasSharedPermission('time_entry')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $autoClockedCount = $overtimeCheck->runCheck();
+
+        return response()->json([
+            'message' => 'Vérification effectuée',
+            'auto_closed_count' => $autoClockedCount,
         ]);
     }
 }

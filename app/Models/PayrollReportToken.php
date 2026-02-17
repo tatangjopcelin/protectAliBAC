@@ -19,13 +19,15 @@ class PayrollReportToken extends Model
         'rejection_reason',
         'sent_at',
         'viewed_at',
-        'responded_at'
+        'responded_at',
+        'admin_viewed_at'
     ];
 
     protected $casts = [
         'sent_at' => 'datetime',
         'viewed_at' => 'datetime',
-        'responded_at' => 'datetime'
+        'responded_at' => 'datetime',
+        'admin_viewed_at' => 'datetime'
     ];
 
     /**

@@ -20,6 +20,8 @@ class TimeEntry extends Model
         'status',
         'location',
         'notes',
+        'clock_in_photo',
+        'clock_out_signature',
     ];
 
     protected $casts = [

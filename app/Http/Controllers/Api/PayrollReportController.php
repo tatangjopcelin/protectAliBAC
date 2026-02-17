@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PayrollReportDistributedMail;
 use App\Models\PayrollReportToken;
 use App\Models\User;
 use App\Models\TimeEntry;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -77,24 +79,18 @@ class PayrollReportController extends Controller
                     ]);
                 }
 
-                // Envoyer l'email avec le lien (URL frontend)
+                // URL frontend pour consulter et confirmer
                 $frontendUrl = env('FRONTEND_URL', 'http://localhost:8101');
                 $link = "{$frontendUrl}/payroll-report/{$token->token}";
-                
-                Mail::raw(
-                    "Bonjour {$employee->name},\n\n" .
-                    "Votre rapport de paie pour le mois de {$monthStart->locale('fr')->monthName} {$monthStart->year} est disponible.\n\n" .
-                    "Veuillez consulter et confirmer vos heures de travail en cliquant sur le lien suivant :\n" .
-                    $link . "\n\n" .
-                    "Cordialement,\n" .
-                    "L'équipe Table du Boucher",
-                    function ($message) use ($employee, $monthStart) {
-                        $message->to($employee->email)
-                            ->subject("Rapport de paie - {$monthStart->locale('fr')->monthName} {$monthStart->year}");
-                    }
-                );
 
-                // sent_at est déjà mis à jour dans la condition ci-dessus
+                // Données pour le PDF récapitulatif des heures
+                $pdfData = $this->getPayrollPdfData($employee, $month);
+                $pdf = Pdf::loadView('pdf.payroll-hours', $pdfData);
+                $pdfContent = $pdf->output();
+                $pdfFilename = 'recapitulatif-heures-' . $month . '-' . \Illuminate\Support\Str::slug($employee->name) . '.pdf';
+
+                Mail::send(new PayrollReportDistributedMail($employee, $monthStart, $link, $pdfContent, $pdfFilename));
+
                 $sentCount++;
 
             } catch (\Exception $e) {
@@ -108,6 +104,91 @@ class PayrollReportController extends Controller
             'sent_count' => $sentCount,
             'errors' => $errors
         ]);
+    }
+
+    /**
+     * Construire les données pour le PDF récapitulatif des heures (pointages) d'un employé pour un mois.
+     */
+    private function getPayrollPdfData(User $employee, string $month): array
+    {
+        $monthStart = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $monthEnd = Carbon::createFromFormat('Y-m', $month)->endOfMonth();
+        $monthLabel = $monthStart->locale('fr')->monthName . ' ' . $monthStart->year;
+
+        $timeEntries = TimeEntry::where('user_id', $employee->id)
+            ->whereBetween('date', [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')])
+            ->whereNotNull('clock_in')
+            ->whereNotNull('clock_out')
+            ->with('breaks')
+            ->orderBy('date')
+            ->orderBy('clock_in')
+            ->get();
+
+        $rows = [];
+        $totalNetMinutes = 0;
+        $totalBreakMinutes = 0;
+
+        foreach ($timeEntries as $entry) {
+            $breakMinutes = 0;
+            if ($entry->breaks) {
+                foreach ($entry->breaks as $breakItem) {
+                    if ($breakItem->duration_minutes) {
+                        $breakMinutes += $breakItem->duration_minutes;
+                    } elseif ($breakItem->start_break && $breakItem->end_break) {
+                        $startBreak = Carbon::parse($breakItem->start_break);
+                        $endBreak = Carbon::parse($breakItem->end_break);
+                        $breakMs = $endBreak->getTimestamp() - $startBreak->getTimestamp();
+                        if ($breakMs > 0) {
+                            $breakMinutes += (int) round($breakMs / 60);
+                        }
+                    }
+                }
+            }
+
+            $netMinutes = 0;
+            if ($entry->hours_worked && $entry->hours_worked > 0) {
+                $netMinutes = (int) round($entry->hours_worked * 60);
+            } elseif ($entry->clock_in && $entry->clock_out) {
+                $clockIn = Carbon::parse($entry->clock_in);
+                $clockOut = Carbon::parse($entry->clock_out);
+                $diffMinutes = (int) round(($clockOut->getTimestamp() - $clockIn->getTimestamp()) / 60);
+                if ($diffMinutes < 0) {
+                    $diffMinutes = abs($diffMinutes);
+                }
+                $netMinutes = max(0, $diffMinutes - $breakMinutes);
+            }
+
+            $totalNetMinutes += $netMinutes;
+            $totalBreakMinutes += $breakMinutes;
+
+            $clockInFormatted = $entry->clock_in ? Carbon::parse($entry->clock_in)->format('H:i') : '-';
+            $clockOutFormatted = $entry->clock_out ? Carbon::parse($entry->clock_out)->format('H:i') : '-';
+            $hours = (int) floor($netMinutes / 60);
+            $mins = $netMinutes % 60;
+            $workedFormatted = $hours > 0 ? "{$hours} h " . str_pad((string) $mins, 2, '0', STR_PAD_LEFT) : $mins . ' min';
+
+            $rows[] = [
+                'date' => Carbon::parse($entry->date)->locale('fr')->isoFormat('dddd D MMMM YYYY'),
+                'clock_in' => $clockInFormatted,
+                'clock_out' => $clockOutFormatted,
+                'break_minutes' => $breakMinutes,
+                'worked_formatted' => $workedFormatted,
+            ];
+        }
+
+        $totalHours = (int) floor($totalNetMinutes / 60);
+        $remainingMinutes = (int) ($totalNetMinutes % 60);
+        $totalHoursDecimal = number_format($totalHours + $remainingMinutes / 60, 2, ',', ' ');
+
+        return [
+            'employeeName' => $employee->name,
+            'monthLabel' => $monthLabel,
+            'rows' => $rows,
+            'totalBreakMinutes' => $totalBreakMinutes,
+            'totalHours' => $totalHours,
+            'totalMinutes' => $remainingMinutes,
+            'totalHoursDecimal' => $totalHoursDecimal,
+        ];
     }
 
     /**
@@ -305,5 +386,55 @@ class PayrollReportController extends Controller
         }
 
         return response()->json($statusesByUser);
+    }
+
+    /**
+     * Compter les rapports confirmés ou rejetés non vus par l'admin
+     */
+    public function getDecidedUnseenCount(Request $request)
+    {
+        $user = $request->user();
+        
+        // Vérifier que l'utilisateur est admin ou directeur
+        if (!in_array($user->role, ['admin', 'director'])) {
+            return response()->json(['message' => 'Accès non autorisé'], 403);
+        }
+
+        // Compter les rapports confirmés ou rejetés qui n'ont pas encore été vus par l'admin
+        $countQuery = PayrollReportToken::whereIn('status', ['confirmed', 'rejected'])
+            ->whereNull('admin_viewed_at');
+        
+        if ($user->store_id) {
+            $countQuery->where('store_id', $user->store_id);
+        }
+        
+        $count = $countQuery->count();
+
+        return response()->json(['count' => $count]);
+    }
+
+    /**
+     * Marquer les rapports confirmés/rejetés comme vus par l'admin
+     */
+    public function markDecidedSeen(Request $request)
+    {
+        $user = $request->user();
+        
+        // Vérifier que l'utilisateur est admin ou directeur
+        if (!in_array($user->role, ['admin', 'director'])) {
+            return response()->json(['message' => 'Accès non autorisé'], 403);
+        }
+
+        // Marquer tous les rapports confirmés/rejetés comme vus par l'admin
+        $updateQuery = PayrollReportToken::whereIn('status', ['confirmed', 'rejected'])
+            ->whereNull('admin_viewed_at');
+        
+        if ($user->store_id) {
+            $updateQuery->where('store_id', $user->store_id);
+        }
+        
+        $updateQuery->update(['admin_viewed_at' => now()]);
+
+        return response()->json(['message' => 'Rapports marqués comme vus']);
     }
 }

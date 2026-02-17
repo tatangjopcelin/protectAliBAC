@@ -15,7 +15,30 @@ class AccountSettingsController extends Controller
      */
     public function show(Request $request)
     {
-        $user = $request->user()->load('store');
+        $user = $request->user();
+        // Recharger le store pour avoir les dernières données
+        $user->load('store');
+        
+        // Si le store existe, recharger depuis la base pour s'assurer d'avoir la dernière valeur
+        if ($user->store) {
+            $user->store->refresh();
+        }
+        
+        $storeData = null;
+        if ($user->store) {
+            $method = $user->store->clock_in_verification_method ?? 'code';
+            \Log::info('AccountSettings - Méthode de vérification récupérée', [
+                'store_id' => $user->store->id,
+                'method' => $method,
+                'raw_value' => $user->store->clock_in_verification_method,
+            ]);
+            $storeData = [
+                'id' => $user->store->id,
+                'name' => $user->store->name,
+                'establishment_code' => $user->store->establishment_code,
+                'clock_in_verification_method' => $method,
+            ];
+        }
         
         return response()->json([
             'id' => $user->id,
@@ -26,11 +49,7 @@ class AccountSettingsController extends Controller
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'store_id' => $user->store_id,
-            'store' => $user->store ? [
-                'id' => $user->store->id,
-                'name' => $user->store->name,
-                'establishment_code' => $user->store->establishment_code,
-            ] : null,
+            'store' => $storeData,
         ]);
     }
 

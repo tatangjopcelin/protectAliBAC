@@ -235,6 +235,14 @@ class SubscriptionController extends Controller
             $trialEndsAt = null;
         }
 
+        // Récupérer ends_at depuis Stripe :
+        // - Si cancel_at est présent (abonnement annulé mais encore actif), utiliser cancel_at
+        // - Sinon, null pour un abonnement récurrent normal
+        $endsAt = null;
+        if (isset($data['cancel_at']) && $data['cancel_at']) {
+            $endsAt = Carbon::createFromTimestamp($data['cancel_at']);
+        }
+
         $firstItem = $data['items']['data'][0] ?? null;
         $isSinglePrice = count($data['items']['data']) === 1;
 
@@ -246,7 +254,7 @@ class SubscriptionController extends Controller
                 'stripe_price' => $firstItem && $isSinglePrice ? $firstItem['price']['id'] : null,
                 'quantity' => $firstItem && $isSinglePrice && isset($firstItem['quantity']) ? $firstItem['quantity'] : null,
                 'trial_ends_at' => $trialEndsAt,
-                'ends_at' => null,
+                'ends_at' => $endsAt,
             ]
         );
 
@@ -281,9 +289,9 @@ class SubscriptionController extends Controller
         Stripe::setApiKey(config('cashier.secret'));
 
         try {
+            // Récupérer tous les abonnements (active, canceled, etc.) pour synchroniser correctement ends_at
             $stripeSubscriptions = StripeSubscription::all([
                 'customer' => $user->stripe_id,
-                'status' => 'active',
                 'expand' => ['data.items.data.price'],
             ]);
         } catch (\Exception $e) {
@@ -300,6 +308,14 @@ class SubscriptionController extends Controller
             $firstItem = $data['items']['data'][0] ?? null;
             $isSinglePrice = count($data['items']['data']) === 1;
 
+            // Récupérer ends_at depuis Stripe :
+            // - Si cancel_at est présent (abonnement annulé mais encore actif), utiliser cancel_at
+            // - Sinon, null pour un abonnement récurrent normal
+            $endsAt = null;
+            if (isset($data['cancel_at']) && $data['cancel_at']) {
+                $endsAt = Carbon::createFromTimestamp($data['cancel_at']);
+            }
+
             $subscription = $user->subscriptions()->updateOrCreate(
                 ['stripe_id' => $data['id']],
                 [
@@ -308,7 +324,7 @@ class SubscriptionController extends Controller
                     'stripe_price' => $firstItem && $isSinglePrice ? $firstItem['price']['id'] : null,
                     'quantity' => $firstItem && $isSinglePrice && isset($firstItem['quantity']) ? $firstItem['quantity'] : null,
                     'trial_ends_at' => $trialEndsAt,
-                    'ends_at' => null,
+                    'ends_at' => $endsAt,
                 ]
             );
 
