@@ -183,6 +183,7 @@ class UserController extends Controller
             'role' => $validated['role'],
             'store_id' => $request->user()->store_id, // Utiliser le store_id de l'admin
             'zone_id' => $validated['zone_id'] ?? null,
+            'email_verified_at' => now(), // Email automatiquement vérifié quand créé par l'admin (pas de vérification nécessaire)
         ]);
         $user->load('zone:id,name,type');
 
