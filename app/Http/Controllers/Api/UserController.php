@@ -57,6 +57,9 @@ class UserController extends Controller
         if ($hasOvertimeColumn) {
             $selectFields[] = 'max_overtime_hours';
         }
+        if (\Schema::hasColumn('users', 'contract_hours_per_week')) {
+            $selectFields[] = 'contract_hours_per_week';
+        }
         
         $users = $query->with('zone:id,name,type')
             ->select($selectFields)
@@ -97,6 +100,7 @@ class UserController extends Controller
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'max_overtime_hours' => $user->max_overtime_hours,
+            'contract_hours_per_week' => $user->contract_hours_per_week,
             'zone' => $user->zone ? [
                 'id' => $user->zone->id,
                 'name' => $user->zone->name,
@@ -126,6 +130,7 @@ class UserController extends Controller
                 Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
             'zone_id' => 'nullable|exists:zones,id',
+            'contract_hours_per_week' => 'nullable|numeric|min:0|max:168',
         ]);
 
         // Seul l'admin peut créer un utilisateur avec le rôle admin
@@ -181,9 +186,10 @@ class UserController extends Controller
             'email' => $validated['email'],
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
-            'store_id' => $request->user()->store_id, // Utiliser le store_id de l'admin
+            'store_id' => $request->user()->store_id,
             'zone_id' => $validated['zone_id'] ?? null,
-            'email_verified_at' => now(), // Email automatiquement vérifié quand créé par l'admin (pas de vérification nécessaire)
+            'contract_hours_per_week' => $validated['contract_hours_per_week'] ?? 35,
+            'email_verified_at' => now(),
         ]);
         $user->load('zone:id,name,type');
 
@@ -196,6 +202,7 @@ class UserController extends Controller
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'max_overtime_hours' => $user->max_overtime_hours,
+                'contract_hours_per_week' => $user->contract_hours_per_week,
                 'zone' => $user->zone ? [
                     'id' => $user->zone->id,
                     'name' => $user->zone->name,
@@ -237,6 +244,7 @@ class UserController extends Controller
                 Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
             'zone_id' => 'nullable|exists:zones,id',
+            'contract_hours_per_week' => 'nullable|numeric|min:0|max:168',
         ]);
 
         // Seul l'admin peut modifier le rôle d'un utilisateur
@@ -269,6 +277,7 @@ class UserController extends Controller
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'max_overtime_hours' => $user->max_overtime_hours,
+                'contract_hours_per_week' => $user->contract_hours_per_week,
                 'zone' => $user->zone ? [
                     'id' => $user->zone->id,
                     'name' => $user->zone->name,

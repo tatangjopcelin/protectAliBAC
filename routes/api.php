@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\PayrollReportController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\SuperTaskController;
 use App\Http\Controllers\Api\LeaveController;
+use App\Http\Controllers\Api\AbsenceController;
 use App\Http\Controllers\Api\AccountSettingsController;
 use App\Http\Controllers\Api\SubscriptionController;
 
@@ -184,9 +185,14 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les plannings
     Route::get('/schedules/weekly', [ScheduleController::class, 'getWeeklySchedule']); // Planning hebdomadaire
     Route::get('/schedules/monthly', [ScheduleController::class, 'getMonthlySchedule']); // Planning mensuel
+    Route::post('/schedules/replicate-week', [ScheduleController::class, 'replicateWeek']); // Reconduire une semaine vers une autre
     Route::put('/schedules/{id}/validate-request', [ScheduleController::class, 'validateRequest']); // Valider un planning "request"
     Route::post('/schedules/publish', [ScheduleController::class, 'publishSchedule']); // Publier et envoyer le planning par email
     Route::apiResource('schedules', ScheduleController::class);
+
+    // Absences (programmé mais pas pointé)
+    Route::get('/absences', [AbsenceController::class, 'index']);
+    Route::put('/absences/{id}', [AbsenceController::class, 'update']);
     
     // Routes pour les pointages (doivent être définies AVANT apiResource)
     Route::post('/time-entries/send-clock-in-code', [TimeEntryController::class, 'sendClockInCode']); // Envoyer code de vérification

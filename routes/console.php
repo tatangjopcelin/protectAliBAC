@@ -38,3 +38,8 @@ Schedule::command('time-entries:check-overtime')
 Schedule::command('super-tasks:check-weekly')
     ->weeklyOn(1, '08:00')
     ->description('Vérifie que les super tâches sont assignées pour chaque semaine et envoie des alertes si nécessaire');
+
+// Détecter les absences (programmé mais pas pointé) chaque jour à 01h00 pour la veille
+Schedule::command('absences:detect')
+    ->dailyAt('01:00')
+    ->description('Enregistre les absences des employés programmés qui n\'ont pas pointé la veille');

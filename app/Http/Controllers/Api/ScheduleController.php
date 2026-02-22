@@ -360,6 +360,101 @@ class ScheduleController extends Controller
     }
 
     /**
+     * Reconduire le planning hebdomadaire d'un utilisateur (ou de tous) vers une autre semaine.
+     * POST body: user_id (optionnel, null = tous les employés), source_week_start, target_week_start
+     */
+    public function replicateWeek(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (!$user->hasSharedPermission('planning')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'user_id' => 'nullable|exists:users,id',
+            'source_week_start' => 'required|date',
+            'target_week_start' => 'required|date',
+        ]);
+
+        // Parsing explicite Y-m-d pour éviter tout décalage fuseau horaire
+        $sourceStart = Carbon::createFromFormat('Y-m-d', $validated['source_week_start'])->startOfDay()->startOfWeek(Carbon::MONDAY);
+        $sourceEnd = $sourceStart->copy()->endOfWeek(Carbon::SUNDAY);
+        $targetStart = Carbon::createFromFormat('Y-m-d', $validated['target_week_start'])->startOfDay()->startOfWeek(Carbon::MONDAY);
+        $targetEnd = $targetStart->copy()->endOfWeek(Carbon::SUNDAY);
+
+        if ($sourceStart->format('Y-m-d') === $targetStart->format('Y-m-d')) {
+            return response()->json([
+                'message' => 'La semaine cible doit être différente de la semaine source. Choisissez le lundi d\'une autre semaine.',
+            ], 422);
+        }
+
+        $baseQuery = Schedule::whereBetween('date', [$sourceStart, $sourceEnd])
+            ->where('status', '!=', 'cancelled');
+
+        if ($user->store_id) {
+            $baseQuery->where('store_id', $user->store_id);
+        }
+
+        if (!empty($validated['user_id'])) {
+            $baseQuery->where('user_id', $validated['user_id']);
+        }
+
+        $userIds = (clone $baseQuery)->distinct()->pluck('user_id');
+        if ($userIds->isEmpty()) {
+            return response()->json([
+                'message' => 'Aucun planning à reconduire pour cette semaine.',
+                'created' => [],
+            ], 200);
+        }
+
+        $created = [];
+        foreach ($userIds as $userId) {
+            $sourceSchedules = (clone $baseQuery)->where('user_id', $userId)->orderBy('date')->orderBy('start_time')->get();
+            foreach ($sourceSchedules as $schedule) {
+                $sourceDate = $schedule->date->copy()->startOfDay();
+                $dayOffset = (int) $sourceStart->diffInDays($sourceDate);
+                $targetDate = $targetStart->copy()->addDays($dayOffset);
+
+                if ($targetDate->gt($targetEnd)) {
+                    continue;
+                }
+
+                $newSchedule = Schedule::create([
+                    'user_id' => $schedule->user_id,
+                    'store_id' => $user->store_id,
+                    'date' => $targetDate->format('Y-m-d'),
+                    'start_time' => $schedule->start_time,
+                    'end_time' => $schedule->end_time,
+                    'break_duration' => $schedule->break_duration,
+                    'start_break' => $schedule->start_break,
+                    'end_break' => $schedule->end_break,
+                    'status' => 'planned',
+                    'notes' => $schedule->notes,
+                    'created_by' => $user->id,
+                ]);
+                $newSchedule = $newSchedule->load(['user', 'creator']);
+                $this->formatScheduleDate($newSchedule);
+                $created[] = $newSchedule;
+            }
+        }
+
+        $usersCount = $userIds->count();
+        $message = count($created) . ' planning(s) reconduit(s)';
+        if ($usersCount > 1) {
+            $message .= ' pour ' . $usersCount . ' employé(s)';
+        }
+        $message .= '.';
+
+        return response()->json([
+            'message' => $message,
+            'created' => $created,
+        ], 201);
+    }
+
+    /**
      * Get weekly schedule for a user or all users
      * Tous les utilisateurs peuvent voir leur propre planning
      * Admin/chef/directeur peuvent voir tous les plannings

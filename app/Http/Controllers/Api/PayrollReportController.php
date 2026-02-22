@@ -80,7 +80,7 @@ class PayrollReportController extends Controller
                 }
 
                 // URL frontend pour consulter et confirmer
-                $frontendUrl = env('FRONTEND_URL', 'http://localhost:8101');
+                $frontendUrl = env('FRONTEND_URL', 'http://localhost:8100');
                 $link = "{$frontendUrl}/payroll-report/{$token->token}";
 
                 // Données pour le PDF récapitulatif des heures

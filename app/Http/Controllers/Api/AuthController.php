@@ -68,6 +68,7 @@ class AuthController extends Controller
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'store_id' => $user->store_id,
+                'contract_hours_per_week' => $user->contract_hours_per_week,
                 'shared_permissions' => $sharedPermissions,
             ],
             'token' => $token,
@@ -439,6 +440,7 @@ class AuthController extends Controller
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'store_id' => $user->store_id,
+            'contract_hours_per_week' => $user->contract_hours_per_week,
             'email_verified' => $user->hasVerifiedEmail(),
             'store' => $user->store ? [
                 'id' => $user->store->id,
