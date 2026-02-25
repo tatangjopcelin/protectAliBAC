@@ -459,6 +459,7 @@ class AuthController extends Controller
         try {
             $validated = $request->validate([
                 'email' => 'required|email',
+                'reset_url' => 'nullable|string|max:500', // URL du frontend (origine) pour le lien dans l'email
             ]);
 
             // Vérifier que l'utilisateur existe et a un email vérifié
@@ -477,13 +478,13 @@ class AuthController extends Controller
                 ], 400);
             }
 
+            $resetUrl = $validated['reset_url'] ?? null;
+
             // Envoyer la notification de réinitialisation personnalisée
-            // Utiliser sendResetLink avec une callback pour utiliser notre notification personnalisée
             $status = Password::sendResetLink(
                 ['email' => $validated['email']],
-                function ($user, $token) {
-                    // Créer une instance de notification avec le token fourni par Laravel
-                    $user->notify(new \App\Notifications\ResetPasswordNotification($token));
+                function ($user, $token) use ($resetUrl) {
+                    $user->notify(new \App\Notifications\ResetPasswordNotification($token, $resetUrl));
                 }
             );
 
