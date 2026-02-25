@@ -12,7 +12,9 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('leaves', function (Blueprint $table) {
-            $table->boolean('is_paid')->default(true)->after('approved_at');
+            if (!Schema::hasColumn('leaves', 'is_paid')) {
+                $table->boolean('is_paid')->default(true)->after('approved_at');
+            }
         });
     }
 
@@ -22,7 +24,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('leaves', function (Blueprint $table) {
-            $table->dropColumn('is_paid');
+            if (Schema::hasColumn('leaves', 'is_paid')) {
+                $table->dropColumn('is_paid');
+            }
         });
     }
 };

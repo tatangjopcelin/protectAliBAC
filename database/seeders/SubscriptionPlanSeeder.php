@@ -28,6 +28,7 @@ class SubscriptionPlanSeeder extends Seeder
                 'interval' => 'month',
                 'features' => ['Jusqu\'à 5 utilisateurs', 'Produits & stock', 'Alertes', 'Liste de courses', 'Planning', 'Pointage', 'Contrôle des produits'],
                 'sort_order' => 1,
+                'is_active' => true,
             ],
             [
                 'name' => 'Pro',
@@ -37,6 +38,7 @@ class SubscriptionPlanSeeder extends Seeder
                 'interval' => 'month',
                 'features' => ['Utilisateurs illimités', 'Tout Essentiel', 'Planning & pointage', 'Congés', 'Tâches', 'Traçabilité', 'IA'],
                 'sort_order' => 2,
+                'is_active' => true,
             ],
             [
                 'name' => 'Pro Annuel',
@@ -46,6 +48,7 @@ class SubscriptionPlanSeeder extends Seeder
                 'interval' => 'year',
                 'features' => ['Tout Pro', '2 mois offerts', 'Facturation annuelle', 'Économiser jusqu\'à 100 €'],
                 'sort_order' => 3,
+                'is_active' => true,
             ],
         ];
 
