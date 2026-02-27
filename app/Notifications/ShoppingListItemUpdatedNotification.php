@@ -71,7 +71,7 @@ class ShoppingListItemUpdatedNotification extends Notification
                 return $mail->line('• Notes : ' . $this->item->notes);
             })
             ->line('Modifié le : ' . $this->item->updated_at->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

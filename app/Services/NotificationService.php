@@ -154,7 +154,12 @@ class NotificationService
         if ($storeId) {
             $query->where('store_id', $storeId);
         }
-        
+
+        // Pour les alertes de péremption, limiter au Chef, Directeur (et Admin)
+        if ($channel === 'expiration' || $channel === 'expired') {
+            $query->whereIn('role', ['chef', 'director', 'admin']);
+        }
+
         $users = $query->get();
 
         foreach ($users as $user) {

@@ -184,6 +184,14 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsTo(Store::class);
     }
 
+    /**
+     * Nom utilisé pour la signature des e-mails (établissement de l'employé).
+     */
+    public function getMailSignatureName(): string
+    {
+        return $this->store?->name ?? config('app.name');
+    }
+
     public function ownedStore(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Store::class, 'created_by');

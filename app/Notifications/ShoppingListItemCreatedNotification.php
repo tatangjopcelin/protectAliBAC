@@ -64,7 +64,7 @@ class ShoppingListItemCreatedNotification extends Notification
                 return $mail->line('• Notes : ' . $this->item->notes);
             })
             ->line('Ajouté le : ' . $this->item->created_at->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

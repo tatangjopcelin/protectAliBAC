@@ -1,5 +1,14 @@
 <?php
 
+$appUrl = rtrim((string) env('APP_URL', ''), '/');
+
+// Par défaut, on n'affiche pas de logo si l'app tourne en local (localhost),
+// car les clients mail (ex: Gmail) ne peuvent pas charger http://localhost/...
+$defaultLogoUrl = null;
+if ($appUrl !== '' && !str_contains($appUrl, 'localhost') && !str_contains($appUrl, '127.0.0.1')) {
+    $defaultLogoUrl = $appUrl.'/images/logo.png';
+}
+
 return [
 
     /*
@@ -114,5 +123,29 @@ return [
         'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown (notifications / MailMessage)
+    |--------------------------------------------------------------------------
+    | Les vues publiées (vendor/mail) doivent être en premier pour que le
+    | logo et le header personnalisés soient utilisés dans les e-mails.
+    */
+    'markdown' => [
+        'theme' => env('MAIL_MARKDOWN_THEME', 'default'),
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Logo dans les e-mails (notifications)
+    |--------------------------------------------------------------------------
+    | URL complète du logo affiché en en-tête des e-mails. Si vide, le nom
+    | de l'application (app.name) est affiché en texte.
+    | Exemple : env('APP_URL') . '/images/logo.png'
+    */
+    'logo_url' => env('MAIL_LOGO_URL', $defaultLogoUrl),
 
 ];

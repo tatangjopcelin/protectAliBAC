@@ -55,7 +55,7 @@ class ProductDeletedNotification extends Notification
             ->line('• Date d\'expiration : ' . \Carbon\Carbon::parse($this->product->expiration_date)->format('d/m/Y'))
             ->line('• Statut : Désactivé (non visible dans la liste active)')
             ->line('Désactivé le : ' . now()->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

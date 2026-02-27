@@ -49,6 +49,11 @@ class AlertService
      */
     private function checkExpiration(Product $product): void
     {
+        // Si le produit n'a plus de stock ou pas de date de péremption, ne pas générer d'alerte
+        if ($product->quantity <= 0 || !$product->expiration_date) {
+            return;
+        }
+
         $today = Carbon::today();
         $expirationDate = Carbon::parse($product->expiration_date);
         $daysUntilExpiration = $today->diffInDays($expirationDate, false);
@@ -208,6 +213,70 @@ class AlertService
             \Log::error('Erreur lors de l\'envoi de notification: ' . $e->getMessage());
             \Log::error('Stack trace: ' . $e->getTraceAsString());
         }
+    }
+
+    /**
+     * Calcule le message, type et sévérité à afficher pour une alerte de péremption,
+     * en fonction de la date du jour (sans modifier la base).
+     * Utilisé à l'affichage pour que l'alerte soit toujours à jour.
+     *
+     * @return array{message: string, type: string, severity: string}|null
+     */
+    public function getExpirationAlertDisplay(Alert $alert): ?array
+    {
+        if (!in_array($alert->type, ['expiration', 'expired'], true)) {
+            return null;
+        }
+
+        $product = $alert->product;
+        if (!$product || !$product->expiration_date) {
+            return null;
+        }
+
+        if (!$product->relationLoaded('zone')) {
+            $product->load('zone.store');
+        }
+
+        $today = Carbon::today();
+        $expirationDate = Carbon::parse($product->expiration_date);
+        $daysUntilExpiration = $today->diffInDays($expirationDate, false);
+        $location = $this->getProductLocation($product);
+
+        if ($expirationDate->isPast()) {
+            return [
+                'type' => 'expired',
+                'severity' => 'critical',
+                'message' => "Le produit {$product->name} est périmé depuis " . abs($daysUntilExpiration) . " jour(s). {$location}",
+            ];
+        }
+        if ($daysUntilExpiration <= 1) {
+            $timeText = $daysUntilExpiration === 0 ? "aujourd'hui" : "demain";
+            return [
+                'type' => 'expiration',
+                'severity' => 'critical',
+                'message' => "Le produit {$product->name} expire {$timeText}. {$location}",
+            ];
+        }
+        if ($daysUntilExpiration <= 3) {
+            return [
+                'type' => 'expiration',
+                'severity' => 'warning',
+                'message' => "Le produit {$product->name} expire dans {$daysUntilExpiration} jour(s). {$location}",
+            ];
+        }
+        if ($daysUntilExpiration <= 7) {
+            return [
+                'type' => 'expiration',
+                'severity' => 'info',
+                'message' => "Le produit {$product->name} expire dans {$daysUntilExpiration} jour(s) - À surveiller. {$location}",
+            ];
+        }
+        // Plus de 7 jours : garder l'affichage cohérent
+        return [
+            'type' => 'expiration',
+            'severity' => 'info',
+            'message' => "Le produit {$product->name} expire dans {$daysUntilExpiration} jour(s). {$location}",
+        ];
     }
 
     /**

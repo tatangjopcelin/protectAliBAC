@@ -80,7 +80,7 @@ class ProductStockReducedNotification extends Notification
         
         $mail->line('• Date d\'expiration : ' . \Carbon\Carbon::parse($this->product->expiration_date)->format('d/m/Y'))
             ->line('Modifié le : ' . now()->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
         
         return $mail;
     }

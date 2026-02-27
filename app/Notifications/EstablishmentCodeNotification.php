@@ -46,7 +46,7 @@ class EstablishmentCodeNotification extends Notification
             ->line('**' . $this->establishmentCode . '**')
             ->line('Partagez ce code à vos employés pour qu\'ils puissent créer leur compte et rejoindre votre établissement.')
             ->line('Important : Gardez ce code secret et partagez-le uniquement avec vos employés de confiance.')
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $this->storeName);
     }
 
     /**

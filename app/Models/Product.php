@@ -80,19 +80,29 @@ class Product extends Model
     }
 
     // Méthodes utilitaires
+
+    /**
+     * Calcule le statut à partir de la date de péremption (sans sauvegarder).
+     * Utilisé pour l'affichage (liste produits) afin que le statut soit toujours à jour.
+     */
+    public function getComputedStatus(): string
+    {
+        if (!$this->expiration_date) {
+            return $this->status ?? 'ok';
+        }
+        $expirationDate = Carbon::parse($this->expiration_date);
+        if ($expirationDate->isPast()) {
+            return 'expired';
+        }
+        if ($expirationDate->isToday() || $expirationDate->isTomorrow()) {
+            return 'warning';
+        }
+        return 'ok';
+    }
+
     public function updateStatus(): void
     {
-        $today = Carbon::today();
-        $expirationDate = Carbon::parse($this->expiration_date);
-        
-        if ($expirationDate->isPast()) {
-            $this->status = 'expired';
-        } elseif ($expirationDate->isToday() || $expirationDate->isTomorrow()) {
-            $this->status = 'warning';
-        } else {
-            $this->status = 'ok';
-        }
-        
+        $this->status = $this->getComputedStatus();
         $this->save();
     }
 
@@ -106,8 +116,15 @@ class Product extends Model
         return Carbon::today()->diffInDays(Carbon::parse($this->expiration_date), false);
     }
 
+    /** Seuil par défaut pour "stock bas" quand min_quantity n'est pas défini (3, 2, 1, 0). */
+    public const LOW_STOCK_DEFAULT_THRESHOLD = 3;
+
     public function isLowStock(): bool
     {
-        return $this->quantity <= $this->min_quantity;
+        // Seuil réel uniquement si min_quantity est défini et > 0 (sinon 0 = "non renseigné", on utilise 3)
+        if ($this->min_quantity !== null && $this->min_quantity !== '' && (float) $this->min_quantity > 0) {
+            return $this->quantity <= $this->min_quantity;
+        }
+        return $this->quantity <= self::LOW_STOCK_DEFAULT_THRESHOLD;
     }
 }

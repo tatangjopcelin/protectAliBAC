@@ -57,10 +57,6 @@ class ProductController extends Controller
         if ($request->has('category_id')) {
             $query->where('category_id', $request->category_id);
         }
-        if ($request->has('status')) {
-            $query->where('status', $request->status);
-        }
-
         // Tri par date de péremption (FIFO)
         if ($request->has('sort') && $request->sort === 'expiration') {
             $query->orderBy('expiration_date', 'asc');
@@ -69,7 +65,17 @@ class ProductController extends Controller
         }
 
         $products = $query->get();
-        
+
+        // Recalculer le statut à partir de la date de péremption pour un affichage toujours à jour
+        foreach ($products as $product) {
+            $product->status = $product->getComputedStatus();
+        }
+
+        // Filtre par statut (appliqué après recalcul pour cohérence avec l'IHM)
+        if ($request->has('status')) {
+            $products = $products->where('status', $request->status)->values();
+        }
+
         // Charger le créateur pour chaque produit (première trace "created")
         foreach ($products as $product) {
             $firstTrace = \App\Models\ProductTrace::where('product_id', $product->id)
@@ -77,7 +83,7 @@ class ProductController extends Controller
                 ->with('user')
                 ->orderBy('created_at', 'asc')
                 ->first();
-            
+
             if ($firstTrace && $firstTrace->user) {
                 $product->creator = $firstTrace->user;
             }
@@ -249,7 +255,9 @@ class ProductController extends Controller
         $this->recordTrace($product->id, 'viewed', $user->id, [
             'barcode' => $product->barcode
         ]);
-        
+
+        $product->status = $product->getComputedStatus();
+
         return response()->json($product);
     }
 
@@ -382,7 +390,10 @@ class ProductController extends Controller
         
         // Charger les relations avant la désactivation
         $product->load(['category', 'supplier', 'zone.store']);
-        
+
+        // Supprimer les alertes liées à ce produit (la "suppression" désactive le produit, pas de CASCADE)
+        $product->alerts()->delete();
+
         $product->update(['is_active' => false]);
 
         // Envoyer une notification par email à tous les autres utilisateurs
@@ -563,21 +574,26 @@ class ProductController extends Controller
             $quantityToAdd = $validated['quantity'];
             $oldQuantity = $product->quantity;
             
-            // Vérifier si une date de péremption différente est fournie
+            // Comparaison en date seule : même date calendaire que sur la fiche (fuseau app).
+            $appTz = config('app.timezone', 'Europe/Paris');
             $hasDifferentExpirationDate = false;
             if (isset($validated['expiration_date'])) {
-                $newExpirationDate = Carbon::parse($validated['expiration_date']);
-                $currentExpirationDate = Carbon::parse($product->expiration_date);
+                $newExpirationDate = preg_match('/^\d{4}-\d{2}-\d{2}/', $validated['expiration_date'])
+                    ? substr($validated['expiration_date'], 0, 10)
+                    : Carbon::parse($validated['expiration_date'])->format('Y-m-d');
+                // Utiliser l'attribut Carbon du modèle (comme l'API pour la fiche) puis format en fuseau app
+                $currentExpirationDate = $product->expiration_date
+                    ? $product->expiration_date->copy()->timezone($appTz)->format('Y-m-d')
+                    : null;
                 
-                if (!$newExpirationDate->equalTo($currentExpirationDate)) {
+                if ($currentExpirationDate && $newExpirationDate !== $currentExpirationDate) {
                     $hasDifferentExpirationDate = true;
                     
-                    // Si on ne force pas et qu'on ne crée pas un nouveau produit, retourner une erreur
                     if (!($validated['force_update_date'] ?? false) && !($validated['create_new_product'] ?? false)) {
                         return response()->json([
                             'error' => 'La date de péremption est différente du produit existant',
-                            'current_expiration_date' => $product->expiration_date,
-                            'new_expiration_date' => $validated['expiration_date'],
+                            'current_expiration_date' => $currentExpirationDate,
+                            'new_expiration_date' => $newExpirationDate,
                             'suggestions' => [
                                 'Utilisez "force_update_date": true pour mettre à jour la date du produit existant',
                                 'Utilisez "create_new_product": true pour créer un nouveau produit avec cette date',
@@ -895,15 +911,28 @@ class ProductController extends Controller
     }
 
     /**
-     * Produits en stock bas
+     * Produits en stock bas (min_quantity défini et quantity <= min_quantity, ou sans min_quantity et quantity <= 3)
      */
-    public function lowStock()
+    public function lowStock(Request $request)
     {
-        $products = Product::where('is_active', true)
-            ->whereRaw('quantity <= min_quantity')
-            ->with(['category', 'zone'])
-            ->get();
-
+        $user = $request->user();
+        $query = Product::where('is_active', true)
+            ->whereHas('zone', function ($q) use ($user) {
+                if ($user && $user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->where(function ($q) {
+                $q->where('min_quantity', '>', 0)
+                    ->whereColumn('quantity', '<=', 'min_quantity');
+                $q->orWhere(function ($q2) {
+                    $q2->where(function ($q3) {
+                        $q3->whereNull('min_quantity')->orWhere('min_quantity', '<=', 0);
+                    })->where('quantity', '<=', Product::LOW_STOCK_DEFAULT_THRESHOLD);
+                });
+            })
+            ->with(['category', 'zone']);
+        $products = $query->get();
         return response()->json($products);
     }
 

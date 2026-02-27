@@ -100,7 +100,7 @@ class ProductExpirationAlertNotification extends Notification
         
         $mail->line('')
             ->line('Veuillez vérifier ce produit et prendre les mesures nécessaires.')
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
         
         return $mail;
     }

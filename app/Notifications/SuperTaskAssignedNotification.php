@@ -68,7 +68,7 @@ class SuperTaskAssignedNotification extends Notification
         }
         
         $mail->line('Assignée le : ' . $this->superTask->created_at->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
         
         return $mail;
     }

@@ -70,14 +70,15 @@ class DashboardController extends Controller
                 ->count(),
             'low_stock_count' => (clone $productsQuery)
                 ->where(function ($query) {
-                    // Produits avec min_quantity défini et quantity <= min_quantity
-                    $query->whereNotNull('min_quantity')
+                    // min_quantity > 0 et quantity <= min_quantity
+                    $query->where('min_quantity', '>', 0)
                           ->whereColumn('quantity', '<=', 'min_quantity');
                 })
                 ->orWhere(function ($query) {
-                    // Produits sans min_quantity mais avec quantity = 0 (stock épuisé)
-                    $query->whereNull('min_quantity')
-                          ->where('quantity', '<=', 0);
+                    // min_quantity null ou = 0 : stock bas à 3, 2, 1 ou 0
+                    $query->where(function ($q) {
+                        $q->whereNull('min_quantity')->orWhere('min_quantity', '<=', 0);
+                    })->where('quantity', '<=', \App\Models\Product::LOW_STOCK_DEFAULT_THRESHOLD);
                 })
                 ->count(),
             'expired_count' => (clone $productsQuery)
@@ -389,14 +390,13 @@ class DashboardController extends Controller
                 }
             })
             ->where(function ($query) {
-                // Produits avec min_quantity défini et quantity <= min_quantity
-                $query->whereNotNull('min_quantity')
+                $query->where('min_quantity', '>', 0)
                       ->whereColumn('quantity', '<=', 'min_quantity');
-            })
-            ->orWhere(function ($query) {
-                // Produits sans min_quantity mais avec quantity = 0 (stock épuisé)
-                $query->whereNull('min_quantity')
-                      ->where('quantity', '<=', 0);
+                $query->orWhere(function ($q) {
+                    $q->where(function ($q2) {
+                        $q2->whereNull('min_quantity')->orWhere('min_quantity', '<=', 0);
+                    })->where('quantity', '<=', \App\Models\Product::LOW_STOCK_DEFAULT_THRESHOLD);
+                });
             })
             ->with(['category', 'supplier', 'zone.store'])
             ->orderBy('quantity', 'asc')

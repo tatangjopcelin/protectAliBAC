@@ -47,7 +47,7 @@ class VerifyEmailNotification extends Notification
             ->line('Entrez ce code dans l\'application pour vérifier votre adresse email et activer votre compte.')
             ->line('Ce code est valide pendant 15 minutes.')
             ->line('Si vous n\'avez pas créé de compte, vous pouvez ignorer cet email.')
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

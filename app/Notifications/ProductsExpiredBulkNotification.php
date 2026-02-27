@@ -50,7 +50,7 @@ class ProductsExpiredBulkNotification extends Notification
             ->line('• Produits traités : **' . $this->processedCount . '**')
             ->line('• Action : Stock réduit à 0 et statut changé en "périmé"')
             ->line('Traitement effectué le : ' . now()->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

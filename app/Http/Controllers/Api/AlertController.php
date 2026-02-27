@@ -5,10 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Alert;
 use App\Policies\AlertPolicy;
+use App\Services\AlertService;
 use Illuminate\Http\Request;
 
 class AlertController extends Controller
 {
+    public function __construct(protected AlertService $alertService)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -16,8 +21,8 @@ class AlertController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
         
-        $query = Alert::with('product');
-        
+        $query = Alert::with('product.zone.store');
+
         // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
         if ($user->store_id) {
             $query->where('store_id', $user->store_id);
@@ -36,7 +41,21 @@ class AlertController extends Controller
             $query->where('severity', $request->severity);
         }
 
-        return response()->json($query->orderBy('created_at', 'desc')->get());
+        $alerts = $query->orderBy('created_at', 'desc')->get();
+
+        foreach ($alerts as $alert) {
+            if ($alert->product) {
+                $alert->product->status = $alert->product->getComputedStatus();
+            }
+            $display = $this->alertService->getExpirationAlertDisplay($alert);
+            if ($display !== null) {
+                $alert->message = $display['message'];
+                $alert->type = $display['type'];
+                $alert->severity = $display['severity'];
+            }
+        }
+
+        return response()->json($alerts);
     }
 
     public function unread(Request $request)
@@ -46,9 +65,9 @@ class AlertController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
         
-        $query = Alert::with('product')
+        $query = Alert::with('product.zone.store')
             ->where('is_read', false);
-        
+
         // Filtrer obligatoirement par établissement de l'utilisateur connecté (sécurité)
         if ($user->store_id) {
             $query->where('store_id', $user->store_id);
@@ -56,10 +75,22 @@ class AlertController extends Controller
             // Si l'utilisateur n'a pas de store_id, ne retourner aucune alerte pour la sécurité
             $query->whereRaw('1 = 0');
         }
-        
+
         $alerts = $query->orderBy('severity', 'desc')
             ->orderBy('created_at', 'desc')
             ->get();
+
+        foreach ($alerts as $alert) {
+            if ($alert->product) {
+                $alert->product->status = $alert->product->getComputedStatus();
+            }
+            $display = $this->alertService->getExpirationAlertDisplay($alert);
+            if ($display !== null) {
+                $alert->message = $display['message'];
+                $alert->type = $display['type'];
+                $alert->severity = $display['severity'];
+            }
+        }
 
         return response()->json($alerts);
     }
@@ -79,14 +110,25 @@ class AlertController extends Controller
             $alert->whereRaw('1 = 0');
         }
         $alert = $alert->firstOrFail();
-        
+
         if (!(new AlertPolicy())->markAsRead($user, $alert)) {
             return response()->json(['message' => 'Accès refusé'], 403);
         }
-        
+
         $alert->markAsRead();
 
-        return response()->json($alert->fresh());
+        $alert = $alert->fresh('product.zone.store');
+        if ($alert->product) {
+            $alert->product->status = $alert->product->getComputedStatus();
+        }
+        $display = $this->alertService->getExpirationAlertDisplay($alert);
+        if ($display !== null) {
+            $alert->message = $display['message'];
+            $alert->type = $display['type'];
+            $alert->severity = $display['severity'];
+        }
+
+        return response()->json($alert);
     }
 
     public function show(string $id)
@@ -96,7 +138,7 @@ class AlertController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
         
-        $alert = Alert::with('product')->where('id', $id);
+        $alert = Alert::with('product.zone.store')->where('id', $id);
         if ($user->store_id) {
             $alert->where('store_id', $user->store_id);
         } else {
@@ -104,7 +146,17 @@ class AlertController extends Controller
             $alert->whereRaw('1 = 0');
         }
         $alert = $alert->firstOrFail();
-        
+
+        if ($alert->product) {
+            $alert->product->status = $alert->product->getComputedStatus();
+        }
+        $display = $this->alertService->getExpirationAlertDisplay($alert);
+        if ($display !== null) {
+            $alert->message = $display['message'];
+            $alert->type = $display['type'];
+            $alert->severity = $display['severity'];
+        }
+
         return response()->json($alert);
     }
 }

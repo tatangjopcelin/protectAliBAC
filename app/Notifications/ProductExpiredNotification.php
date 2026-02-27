@@ -58,7 +58,7 @@ class ProductExpiredNotification extends Notification
             ->line('• Statut : Périmé et retiré du stock')
             ->line('⚠️ Le stock de ce produit a été réduit à 0.')
             ->line('Modifié le : ' . now()->format('d/m/Y à H:i'))
-            ->salutation('Cordialement, L\'équipe Table du Boucher');
+            ->salutation('Cordialement, L\'équipe ' . $notifiable->getMailSignatureName());
     }
 
     /**

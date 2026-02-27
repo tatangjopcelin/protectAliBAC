@@ -6,8 +6,12 @@
     <title>Votre planning de la semaine</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-        <h1 style="color: #2c3e50; margin-top: 0;">Table du Boucher</h1>
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 5px; margin-bottom: 20px; text-align: center;">
+        @if($logoUrl = config('mail.logo_url'))
+        <img src="{{ $logoUrl }}" alt="{{ $notifiable->getMailSignatureName() }}" style="max-height: 50px; max-width: 250px;">
+        @else
+        <h1 style="color: #2c3e50; margin-top: 0;">{{ $notifiable->getMailSignatureName() }}</h1>
+        @endif
     </div>
     
     <div style="background-color: #ffffff; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
@@ -76,7 +80,7 @@
     </div>
     
     <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #666; font-size: 12px;">
-        <p>Cordialement,<br>L'équipe Table du Boucher</p>
+        <p>Cordialement,<br>L'équipe {{ $notifiable->getMailSignatureName() }}</p>
     </div>
 </body>
 </html>
