@@ -142,10 +142,18 @@ return [
     |--------------------------------------------------------------------------
     | Logo dans les e-mails (notifications)
     |--------------------------------------------------------------------------
-    | URL complète du logo affiché en en-tête des e-mails. Si vide, le nom
-    | de l'application (app.name) est affiché en texte.
-    | Exemple : env('APP_URL') . '/images/logo.png'
+    | Le logo est d'abord lu depuis public/images/logo.png (intégré en base64).
+    | Sinon, URL complète si définie (ex: prod). Si pas de logo, le texte
+    | ci-dessous est affiché.
     */
     'logo_url' => env('MAIL_LOGO_URL', $defaultLogoUrl),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Texte d'en-tête si pas de logo
+    |--------------------------------------------------------------------------
+    | Affiché en haut des e-mails quand aucun logo n'est disponible.
+    */
+    'header_text' => env('MAIL_HEADER_TEXT', 'Brole'),
 
 ];
