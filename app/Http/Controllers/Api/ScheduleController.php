@@ -119,7 +119,7 @@ class ScheduleController extends Controller
             'user_id' => 'required|exists:users,id',
             'date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
-            'end_time' => 'required|date_format:H:i|after:start_time',
+            'end_time' => 'required|date_format:H:i', // peut être < start_time si créneau à cheval sur minuit (ex. 19:30 → 00:45)
             'break_duration' => 'nullable|date_format:H:i',
             'start_break' => 'nullable|date_format:H:i',
             'end_break' => 'nullable|date_format:H:i|after:start_break',
@@ -255,7 +255,7 @@ class ScheduleController extends Controller
         // Les employés ne peuvent modifier que les heures et les pauses, pas user_id, date ou status
         $validationRules = [
             'start_time' => 'sometimes|date_format:H:i',
-            'end_time' => 'sometimes|date_format:H:i|after:start_time',
+            'end_time' => 'sometimes|date_format:H:i', // peut être < start_time si créneau à cheval sur minuit
             'break_duration' => 'nullable|date_format:H:i',
             'start_break' => 'nullable|date_format:H:i',
             'end_break' => 'nullable|date_format:H:i|after:start_break',

@@ -83,10 +83,14 @@ class TimeEntryController extends Controller
         }
 
         // Vérifier si un pointage en cours existe déjà
+        $yesterday = Carbon::yesterday();
         $existingActiveEntry = TimeEntry::where('user_id', $user->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
+            ->orderBy('clock_in', 'desc')
             ->first();
 
         if ($existingActiveEntry) {
@@ -96,12 +100,33 @@ class TimeEntryController extends Controller
             ], 400);
         }
 
-        // Chercher le planning du jour (le plus récent ou celui qui correspond à l'heure actuelle)
-        $schedule = Schedule::where('user_id', $user->id)
+        // Chercher le planning du jour : premier créneau non complété pour lequel le pointage est au plus 1h avant le début
+        $clockInTime = now();
+        $schedules = Schedule::where('user_id', $user->id)
             ->whereDate('date', $today)
             ->where('status', '!=', 'cancelled')
-            ->orderBy('start_time', 'desc')
-            ->first();
+            ->where('status', '!=', 'request')
+            ->orderBy('start_time', 'asc')
+            ->get();
+
+        $schedule = null;
+        foreach ($schedules as $s) {
+            $hasCompletedEntry = TimeEntry::where('user_id', $user->id)
+                ->whereDate('date', $today)
+                ->where('schedule_id', $s->id)
+                ->whereNotNull('clock_in')
+                ->whereNotNull('clock_out')
+                ->exists();
+            if ($hasCompletedEntry) {
+                continue;
+            }
+            $scheduleStart = Carbon::parse($s->date->format('Y-m-d') . ' ' . $s->start_time);
+            if ($clockInTime->lt($scheduleStart) && $clockInTime->diffInMinutes($scheduleStart) > 60) {
+                continue; // plus d'1h avant le début du créneau, ne pas lier
+            }
+            $schedule = $s;
+            break;
+        }
 
         // Créer un NOUVEAU pointage (pas updateOrCreate) pour permettre plusieurs pointages par jour
         $timeEntry = TimeEntry::create([
@@ -154,10 +179,13 @@ class TimeEntryController extends Controller
         ]);
 
         $today = Carbon::today();
-        
-        // Trouver le pointage EN COURS (sans clock_out) pour aujourd'hui
+        $yesterday = Carbon::yesterday();
+
+        // Trouver le pointage EN COURS (sans clock_out) : aujourd'hui ou hier (créneau à cheval sur minuit, ex. 22h30 → 01h30)
         $timeEntry = TimeEntry::where('user_id', $user->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
             ->orderBy('clock_in', 'desc') // Prendre le plus récent
@@ -342,7 +370,7 @@ class TimeEntryController extends Controller
             'user_id' => 'required|exists:users,id',
             'date' => 'required|date',
             'clock_in' => 'required|date',
-            'clock_out' => 'required|date|after:clock_in',
+            'clock_out' => 'required|date', // après vérification : créneau minuit géré en PHP
             'break_duration' => 'nullable|numeric|min:0',
             'status' => 'sometimes|in:present,absent,late,early_leave',
             'notes' => 'nullable|string',
@@ -370,8 +398,19 @@ class TimeEntryController extends Controller
         } else {
             $clockOut = Carbon::parse($validated['clock_out'])->setTimezone($appTimezone);
         }
-        
-        // Vérifier que clock_out est après clock_in
+
+        // Créneau à cheval sur minuit (ex. 19h30 → 00h45) : considérer le départ le lendemain
+        if ($clockOut <= $clockIn) {
+            $outHour = (int) $clockOut->format('G');
+            $inHour = (int) $clockIn->format('G');
+            if ($outHour < 12 && $inHour >= 12) {
+                $clockOut = $clockOut->copy()->addDay();
+            } else {
+                return response()->json([
+                    'message' => 'L\'heure de départ doit être après l\'heure d\'arrivée'
+                ], 400);
+            }
+        }
         if ($clockOut <= $clockIn) {
             return response()->json([
                 'message' => 'L\'heure de départ doit être après l\'heure d\'arrivée'
@@ -627,13 +666,16 @@ class TimeEntryController extends Controller
 
         $targetUser = \App\Models\User::findOrFail($validated['user_id']);
         
-        // Vérifier si un pointage existe déjà pour aujourd'hui AVANT d'envoyer le code
-        // Un employé peut pointer plusieurs fois par jour, mais seulement si le pointage précédent est terminé (clock_out)
+        // Vérifier si un pointage existe déjà (aujourd'hui ou hier) et n'est pas terminé
         $today = Carbon::today();
+        $yesterday = Carbon::yesterday();
         $existingEntry = TimeEntry::where('user_id', $targetUser->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
-            ->whereNull('clock_out') // Seulement si le pointage précédent n'est pas terminé
+            ->whereNull('clock_out')
+            ->orderBy('clock_in', 'desc')
             ->first();
 
         if ($existingEntry) {
@@ -823,13 +865,16 @@ class TimeEntryController extends Controller
         }
 
         $today = Carbon::today();
-        
-        // Vérifier si un pointage existe déjà pour aujourd'hui et n'est pas terminé
-        // Un employé peut pointer plusieurs fois par jour, mais seulement si le pointage précédent est terminé (clock_out)
+        $yesterday = Carbon::yesterday();
+
+        // Vérifier si un pointage existe déjà (aujourd'hui ou hier) et n'est pas terminé
         $existingEntry = TimeEntry::where('user_id', $targetUser->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
-            ->whereNull('clock_out') // Seulement si le pointage précédent n'est pas terminé
+            ->whereNull('clock_out')
+            ->orderBy('clock_in', 'desc')
             ->first();
 
         \Log::info('Vérification pointage existant', [
@@ -880,12 +925,12 @@ class TimeEntryController extends Controller
             
             // Ne considérer que les plannings non complétés
             if (!$hasCompletedEntry) {
-                // Calculer la différence entre l'heure de début du planning et l'heure de pointage
                 $scheduleStart = Carbon::parse($s->date->format('Y-m-d') . ' ' . $s->start_time);
+                // Ne pas lier si l'employé pointe plus d'1 heure avant le début du créneau (ex. 8h pour 10h-13h)
+                if ($clockInTime->lt($scheduleStart) && $clockInTime->diffInMinutes($scheduleStart) > 60) {
+                    continue;
+                }
                 $diff = abs($clockInTime->diffInMinutes($scheduleStart));
-                
-                // Si le planning commence avant ou à l'heure de pointage, le considérer
-                // Sinon, ne le considérer que si c'est le meilleur choix (le plus proche)
                 if ($scheduleStart <= $clockInTime || $diff < $minDiff) {
                     if ($diff < $minDiff) {
                         $minDiff = $diff;
@@ -894,7 +939,7 @@ class TimeEntryController extends Controller
                 }
             }
         }
-        
+
         $schedule = $bestSchedule;
 
         // Vérifier si l'employé a déjà pointé et pointé son départ aujourd'hui
@@ -1037,12 +1082,16 @@ class TimeEntryController extends Controller
         }
 
         $today = Carbon::today();
-        
-        // Vérifier si un pointage existe déjà pour aujourd'hui et n'est pas terminé
+        $yesterday = Carbon::yesterday();
+
+        // Vérifier si un pointage existe déjà (aujourd'hui ou hier) et n'est pas terminé
         $existingEntry = TimeEntry::where('user_id', $targetUser->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
+            ->orderBy('clock_in', 'desc')
             ->first();
 
         if ($existingEntry) {
@@ -1075,8 +1124,11 @@ class TimeEntryController extends Controller
             
             if (!$hasCompletedEntry) {
                 $scheduleStart = Carbon::parse($s->date->format('Y-m-d') . ' ' . $s->start_time);
+                // Ne pas lier si l'employé pointe plus d'1 heure avant le début du créneau
+                if ($clockInTime->lt($scheduleStart) && $clockInTime->diffInMinutes($scheduleStart) > 60) {
+                    continue;
+                }
                 $diff = abs($clockInTime->diffInMinutes($scheduleStart));
-                
                 if ($scheduleStart <= $clockInTime || $diff < $minDiff) {
                     if ($diff < $minDiff) {
                         $minDiff = $diff;
@@ -1085,7 +1137,7 @@ class TimeEntryController extends Controller
                 }
             }
         }
-        
+
         $schedule = $bestSchedule;
 
         $hasCompletedEntryToday = TimeEntry::where('user_id', $targetUser->id)
@@ -1196,13 +1248,16 @@ class TimeEntryController extends Controller
 
         $targetUser = \App\Models\User::findOrFail($validated['user_id']);
         $today = Carbon::today();
-        
-        // Trouver le pointage EN COURS (sans clock_out) pour aujourd'hui
+        $yesterday = Carbon::yesterday();
+
+        // Trouver le pointage EN COURS (sans clock_out) : aujourd'hui ou hier (créneau à cheval sur minuit)
         $timeEntry = TimeEntry::where('user_id', $targetUser->id)
-            ->whereDate('date', $today)
+            ->where(function ($q) use ($today, $yesterday) {
+                $q->whereDate('date', $today)->orWhereDate('date', $yesterday);
+            })
             ->whereNotNull('clock_in')
             ->whereNull('clock_out')
-            ->orderBy('clock_in', 'desc') // Prendre le plus récent
+            ->orderBy('clock_in', 'desc')
             ->first();
 
         if (!$timeEntry) {
