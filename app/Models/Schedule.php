@@ -24,10 +24,8 @@ class Schedule extends Model
 
     protected $casts = [
         'date' => 'date',
-        // start_time et end_time sont stockés comme TIME dans la DB, on les garde en string
-        // 'start_time' => 'datetime',
-        // 'end_time' => 'datetime',
-        'break_duration' => 'datetime',
+        // start_time, end_time, break_duration : colonnes TIME, gardés en string pour éviter
+        // qu'un "00:05" soit sérialisé en datetime (ex. 2026-01-01 00:05:00) et affiché en "121560m"
     ];
     
     /**

@@ -389,40 +389,42 @@ class TimeEntryController extends Controller
             return response()->json(['message' => 'L\'employé doit appartenir au même établissement'], 403);
         }
 
-        // Chercher le planning du jour si disponible
-        $schedule = Schedule::where('user_id', $validated['user_id'])
-            ->whereDate('date', $validated['date'])
-            ->where('status', '!=', 'cancelled')
-            ->orderBy('start_time', 'desc')
-            ->first();
+        // Chaque pointage manuel a son propre planning pour afficher correctement
+        // plusieurs créneaux (ex. 10h-15h et 19h-23h) dans le planning / grid-admin
+        $startTime = $clockIn->format('H:i');
+        $endTime = $clockOut->format('H:i');
 
-        // Si aucun planning n'existe, créer un planning automatiquement basé sur le pointage manuel
-        if (!$schedule) {
-            // Extraire les heures de clock_in et clock_out pour créer le planning
-            $startTime = $clockIn->format('H:i');
-            $endTime = $clockOut->format('H:i');
-            
-            // Calculer la durée de pause si fournie
-            $breakDuration = null;
-            if (isset($validated['break_duration']) && $validated['break_duration'] > 0) {
-                $breakHours = floor($validated['break_duration']);
-                $breakMinutes = round(($validated['break_duration'] - $breakHours) * 60);
-                $breakDuration = sprintf('%02d:%02d', $breakHours, $breakMinutes);
-            }
-            
-            // Créer le planning avec le statut "confirmed" pour indiquer qu'il est validé
-            $schedule = Schedule::create([
-                'user_id' => $validated['user_id'],
-                'store_id' => $targetUser->store_id,
-                'date' => $validated['date'],
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'break_duration' => $breakDuration,
-                'status' => 'confirmed', // Statut confirmé car c'est un pointage réel
-                'notes' => 'Planning créé automatiquement à partir d\'un pointage manuel ajouté par ' . $user->name,
-                'created_by' => $user->id,
-            ]);
+        $breakDuration = null;
+        $startBreak = null;
+        $endBreak = null;
+        if (isset($validated['break_duration']) && $validated['break_duration'] > 0) {
+            $breakHours = floor($validated['break_duration']);
+            $breakMinutes = round(($validated['break_duration'] - $breakHours) * 60);
+            $breakDuration = sprintf('%02d:%02d', $breakHours, $breakMinutes);
+            // Placer la pause au centre du créneau pour l'affichage dans le planning
+            $startMinutes = $clockIn->hour * 60 + $clockIn->minute;
+            $endMinutes = $clockOut->hour * 60 + $clockOut->minute;
+            $breakTotalMinutes = $breakHours * 60 + $breakMinutes;
+            $workBeforeBreak = (int) (($endMinutes - $startMinutes - $breakTotalMinutes) / 2);
+            $breakStartMinutes = $startMinutes + $workBeforeBreak;
+            $breakEndMinutes = $breakStartMinutes + $breakTotalMinutes;
+            $startBreak = sprintf('%02d:%02d', (int) floor($breakStartMinutes / 60), $breakStartMinutes % 60);
+            $endBreak = sprintf('%02d:%02d', (int) floor($breakEndMinutes / 60), $breakEndMinutes % 60);
         }
+
+        $schedule = Schedule::create([
+            'user_id' => $validated['user_id'],
+            'store_id' => $targetUser->store_id,
+            'date' => $validated['date'],
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+            'break_duration' => $breakDuration,
+            'start_break' => $startBreak,
+            'end_break' => $endBreak,
+            'status' => 'confirmed',
+            'notes' => 'Planning créé automatiquement à partir d\'un pointage manuel ajouté par ' . $user->name,
+            'created_by' => $user->id,
+        ]);
 
         // Créer le pointage manuel
         $timeEntry = TimeEntry::create([
