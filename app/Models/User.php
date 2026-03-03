@@ -174,6 +174,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Notification::class);
     }
 
+    public function pushTokens(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(PushToken::class);
+    }
+
     public function zone(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Zone::class);

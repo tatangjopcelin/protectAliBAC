@@ -31,12 +31,19 @@ use App\Http\Controllers\Api\LeaveController;
 use App\Http\Controllers\Api\AbsenceController;
 use App\Http\Controllers\Api\AccountSettingsController;
 use App\Http\Controllers\Api\SubscriptionController;
+use App\Http\Controllers\Api\PushTokenController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
+
+// Routes pour les tokens push (app mobile)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/push-tokens', [PushTokenController::class, 'store']);
+    Route::post('/push-tokens/send-test', [PushTokenController::class, 'sendTest']);
+});
 
 // Routes pour les paramètres de compte
 Route::middleware('auth:sanctum')->group(function () {

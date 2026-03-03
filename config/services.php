@@ -35,4 +35,19 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Apple Push Notifications (APNs)
+    |--------------------------------------------------------------------------
+    | Pour envoyer des notifications push iOS. Clé .p8 depuis Apple Developer.
+    | Bundle ID doit correspondre à l'app (ex. com.tdblg.app pour Brole).
+    */
+    'apn' => [
+        'key_id' => env('APN_KEY_ID'),
+        'team_id' => env('APN_TEAM_ID'),
+        'bundle_id' => env('APN_BUNDLE_ID', 'com.tdblg.app'),
+        'key_path' => env('APN_KEY_PATH'), // chemin vers le fichier .p8
+        'sandbox' => env('APN_SANDBOX', true), // true = développement
+    ],
+
 ];
