@@ -164,6 +164,33 @@ class Schedule extends Model
         }
     }
 
+    /**
+     * Accesseur pour formater break_duration en HH:mm
+     */
+    public function getBreakDurationAttribute($value)
+    {
+        if (!$value) return null;
+
+        // Si c'est déjà au format HH:mm ou HH:mm:ss, tronquer à HH:mm
+        if (preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $value)) {
+            return substr($value, 0, 5);
+        }
+
+        // Si c'est un datetime ou un autre format, essayer de parser et de formater en H:i
+        try {
+            $date = \Carbon\Carbon::parse($value);
+            return $date->format('H:i');
+        } catch (\Exception $e) {
+            try {
+                $date = new \DateTime($value);
+                return $date->format('H:i');
+            } catch (\Exception $e2) {
+                // En dernier recours, retourner la valeur telle quelle
+                return $value;
+            }
+        }
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

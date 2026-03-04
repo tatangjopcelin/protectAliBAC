@@ -120,7 +120,8 @@ class ScheduleController extends Controller
             'date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i', // peut être < start_time si créneau à cheval sur minuit (ex. 19:30 → 00:45)
-            'break_duration' => 'nullable|date_format:H:i',
+            // break_duration est soit calculé à partir de start_break/end_break, soit laissé tel quel
+            'break_duration' => 'nullable',
             'start_break' => 'nullable|date_format:H:i',
             'end_break' => 'nullable|date_format:H:i|after:start_break',
             'status' => 'nullable|in:planned,confirmed,cancelled',
@@ -256,7 +257,8 @@ class ScheduleController extends Controller
         $validationRules = [
             'start_time' => 'sometimes|date_format:H:i',
             'end_time' => 'sometimes|date_format:H:i', // peut être < start_time si créneau à cheval sur minuit
-            'break_duration' => 'nullable|date_format:H:i',
+            // break_duration est recalculé à partir de start_break/end_break si présent
+            'break_duration' => 'nullable',
             'start_break' => 'nullable|date_format:H:i',
             'end_break' => 'nullable|date_format:H:i|after:start_break',
             'notes' => 'nullable|string',
