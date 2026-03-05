@@ -25,6 +25,12 @@ class DashboardController extends Controller
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
         }
+
+        // Toujours recharger l'utilisateur depuis la BDD pour avoir le store_id à jour (évite stats d'un autre établissement)
+        $user = $user->fresh(['store']);
+        if (!$user) {
+            return response()->json(['message' => 'Utilisateur introuvable'], 401);
+        }
         
         // Vérifier les permissions
         if (!(new DashboardPolicy())->viewStats($user)) {
@@ -33,7 +39,7 @@ class DashboardController extends Controller
         
         $period = $request->get('period', 'month'); // day, week, month, year
 
-        return response()->json([
+        $payload = [
             'overview' => $this->getOverview($user),
             'stock_value' => $this->getStockValue($user),
             'waste' => $this->getWasteStats($period, $user),
@@ -42,19 +48,34 @@ class DashboardController extends Controller
             'expiring_products' => $this->getExpiringProducts($user),
             'low_stock_products' => $this->getLowStockProducts($user),
             'alerts_summary' => $this->getAlertsSummary($user),
-        ]);
+        ];
+        // Inclure l'établissement pour lequel les stats ont été calculées (une seule source de vérité côté front)
+        $payload['store'] = $user->store ? [
+            'id' => $user->store->id,
+            'name' => $user->store->name,
+        ] : null;
+
+        return response()->json($payload);
     }
 
     /**
-     * Vue d'ensemble générale
+     * Vue d'ensemble générale (strictement filtrée par établissement)
      */
     private function getOverview($user): array
     {
+        if (!$user->store_id) {
+            return [
+                'total_products' => 0,
+                'total_stock_value' => 0,
+                'expiring_today' => 0,
+                'expiring_tomorrow' => 0,
+                'low_stock_count' => 0,
+                'expired_count' => 0,
+            ];
+        }
         $productsQuery = Product::where('is_active', true)
             ->whereHas('zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             });
 
         return [
@@ -70,15 +91,16 @@ class DashboardController extends Controller
                 ->count(),
             'low_stock_count' => (clone $productsQuery)
                 ->where(function ($query) {
-                    // min_quantity > 0 et quantity <= min_quantity
-                    $query->where('min_quantity', '>', 0)
-                          ->whereColumn('quantity', '<=', 'min_quantity');
-                })
-                ->orWhere(function ($query) {
-                    // min_quantity null ou = 0 : stock bas à 3, 2, 1 ou 0
+                    // Les deux critères "stock bas" dans un même bloc pour garder le filtre zone
                     $query->where(function ($q) {
-                        $q->whereNull('min_quantity')->orWhere('min_quantity', '<=', 0);
-                    })->where('quantity', '<=', \App\Models\Product::LOW_STOCK_DEFAULT_THRESHOLD);
+                        $q->where('min_quantity', '>', 0)
+                          ->whereColumn('quantity', '<=', 'min_quantity');
+                    })
+                    ->orWhere(function ($q) {
+                        $q->where(function ($q2) {
+                            $q2->whereNull('min_quantity')->orWhere('min_quantity', '<=', 0);
+                        })->where('quantity', '<=', \App\Models\Product::LOW_STOCK_DEFAULT_THRESHOLD);
+                    });
                 })
                 ->count(),
             'expired_count' => (clone $productsQuery)
@@ -89,16 +111,17 @@ class DashboardController extends Controller
     }
 
     /**
-     * Valeur totale du stock
+     * Valeur totale du stock (strictement filtrée par établissement)
      */
     private function getStockValue($user): array
     {
+        if (!$user->store_id) {
+            return ['total' => 0, 'by_category' => [], 'currency' => 'EUR'];
+        }
         $products = Product::where('is_active', true)
             ->whereNotNull('purchase_price')
             ->whereHas('zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             })
             ->get();
 
@@ -124,18 +147,22 @@ class DashboardController extends Controller
     }
 
     /**
-     * Statistiques de gaspillage
+     * Statistiques de gaspillage (strictement filtrées par établissement)
      */
     private function getWasteStats(string $period, $user): array
     {
+        if (!$user->store_id) {
+            return [
+                'total_value' => 0, 'total_quantity' => 0, 'period' => $period,
+                'top_wasted_products' => [], 'waste_by_category' => [],
+            ];
+        }
         $dateFrom = $this->getDateFrom($period);
 
         $wastedMovements = StockMovement::where('type', 'wasted')
             ->where('created_at', '>=', $dateFrom)
             ->whereHas('product.zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             })
             ->with('product')
             ->get();
@@ -192,18 +219,22 @@ class DashboardController extends Controller
     }
 
     /**
-     * Statistiques de consommation
+     * Statistiques de consommation (strictement filtrées par établissement)
      */
     private function getConsumptionStats(string $period, $user): array
     {
+        if (!$user->store_id) {
+            return [
+                'total_value' => 0, 'period' => $period,
+                'top_consumed_products' => [], 'consumption_by_category' => [],
+            ];
+        }
         $dateFrom = $this->getDateFrom($period);
 
         $consumptionMovements = StockMovement::whereIn('type', ['used', 'exit'])
             ->where('created_at', '>=', $dateFrom)
             ->whereHas('product.zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             })
             ->with('product.category')
             ->get();
@@ -257,30 +288,29 @@ class DashboardController extends Controller
     }
 
     /**
-     * Top produits (utilisés et jetés)
+     * Top produits (utilisés et jetés) — strictement filtrés par établissement
      */
     private function getTopProducts(string $period, $user): array
     {
+        if (!$user->store_id) {
+            return ['most_used' => [], 'most_wasted' => []];
+        }
         $dateFrom = $this->getDateFrom($period);
 
-        $usedProductsQuery = StockMovement::where('type', 'used')
-            ->where('created_at', '>=', $dateFrom);
-        if ($user->store_id) {
-            $usedProductsQuery->where('store_id', $user->store_id);
-        }
-        $usedProducts = $usedProductsQuery->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
+        $usedProducts = StockMovement::where('type', 'used')
+            ->where('created_at', '>=', $dateFrom)
+            ->where('store_id', $user->store_id)
+            ->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
             ->groupBy('product_id')
             ->orderBy('total_quantity', 'desc')
             ->limit(10)
             ->with('product')
             ->get();
 
-        $wastedProductsQuery = StockMovement::where('type', 'wasted')
-            ->where('created_at', '>=', $dateFrom);
-        if ($user->store_id) {
-            $wastedProductsQuery->where('store_id', $user->store_id);
-        }
-        $wastedProducts = $wastedProductsQuery->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
+        $wastedProducts = StockMovement::where('type', 'wasted')
+            ->where('created_at', '>=', $dateFrom)
+            ->where('store_id', $user->store_id)
+            ->select('product_id', DB::raw('SUM(quantity) as total_quantity'))
             ->groupBy('product_id')
             ->orderBy('total_quantity', 'desc')
             ->limit(10)
@@ -306,15 +336,21 @@ class DashboardController extends Controller
     }
 
     /**
-     * Produits expirant bientôt
+     * Produits expirant bientôt (strictement filtrés par établissement)
      */
     private function getExpiringProducts($user): array
     {
+        $emptyExpiring = [
+            'today' => [],
+            'tomorrow' => [],
+            'next_7_days' => [],
+        ];
+        if (!$user->store_id) {
+            return $emptyExpiring;
+        }
         $productsQuery = Product::where('is_active', true)
             ->whereHas('zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             });
 
         return [
@@ -354,7 +390,7 @@ class DashboardController extends Controller
                 })
                 ->values()
                 ->toArray(),
-            'next_7_days' => Product::where('is_active', true)
+            'next_7_days' => (clone $productsQuery)
                 ->where('expiration_date', '>', Carbon::tomorrow())
                 ->where('expiration_date', '<=', Carbon::now()->addDays(7))
                 ->where('quantity', '>', 0)
@@ -379,15 +415,16 @@ class DashboardController extends Controller
     }
 
     /**
-     * Produits en stock bas
+     * Produits en stock bas (strictement filtrés par établissement)
      */
     private function getLowStockProducts($user): array
     {
+        if (!$user->store_id) {
+            return [];
+        }
         return Product::where('is_active', true)
             ->whereHas('zone', function($q) use ($user) {
-                if ($user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             })
             ->where(function ($query) {
                 $query->where('min_quantity', '>', 0)
@@ -422,10 +459,11 @@ class DashboardController extends Controller
      */
     private function getAlertsSummary($user): array
     {
-        $alertsQuery = Alert::where('is_read', false);
-        if ($user->store_id) {
-            $alertsQuery->where('store_id', $user->store_id);
+        if (!$user->store_id) {
+            return ['total_unread' => 0, 'by_type' => [], 'by_severity' => []];
         }
+        $alertsQuery = Alert::where('is_read', false)
+            ->where('store_id', $user->store_id);
 
         return [
             'total_unread' => (clone $alertsQuery)->count(),

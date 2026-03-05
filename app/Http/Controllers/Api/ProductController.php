@@ -911,16 +911,17 @@ class ProductController extends Controller
     }
 
     /**
-     * Produits en stock bas (min_quantity défini et quantity <= min_quantity, ou sans min_quantity et quantity <= 3)
+     * Produits en stock bas (strictement filtrés par établissement)
      */
     public function lowStock(Request $request)
     {
         $user = $request->user();
+        if (!$user || !$user->store_id) {
+            return response()->json([]);
+        }
         $query = Product::where('is_active', true)
             ->whereHas('zone', function ($q) use ($user) {
-                if ($user && $user->store_id) {
-                    $q->where('store_id', $user->store_id);
-                }
+                $q->where('store_id', $user->store_id);
             })
             ->where(function ($q) {
                 $q->where('min_quantity', '>', 0)

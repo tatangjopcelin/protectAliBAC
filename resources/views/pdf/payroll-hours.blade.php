@@ -25,7 +25,7 @@
                 <th>Date</th>
                 <th>Entrée</th>
                 <th>Sortie</th>
-                <th>Pause (min)</th>
+                <th>Pause</th>
                 <th>Heures travaillées</th>
             </tr>
         </thead>
@@ -35,7 +35,7 @@
                 <td>{{ $row['date'] }}</td>
                 <td>{{ $row['clock_in'] }}</td>
                 <td>{{ $row['clock_out'] }}</td>
-                <td class="text-right">{{ $row['break_minutes'] }}</td>
+                <td class="text-right">{{ (int)floor($row['break_minutes'] / 60) }} h {{ str_pad((string)($row['break_minutes'] % 60), 2, '0', STR_PAD_LEFT) }}</td>
                 <td class="text-right">{{ $row['worked_formatted'] }}</td>
             </tr>
             @empty
@@ -48,7 +48,7 @@
         <tfoot>
             <tr class="total-row">
                 <td colspan="3">Total du mois</td>
-                <td class="text-right">{{ $totalBreakMinutes }} min</td>
+                <td class="text-right">{{ (int)floor($totalBreakMinutes / 60) }} h {{ str_pad((string)($totalBreakMinutes % 60), 2, '0', STR_PAD_LEFT) }}</td>
                 <td class="text-right">{{ $totalHours }} h {{ str_pad((string)$totalMinutes, 2, '0', STR_PAD_LEFT) }}</td>
             </tr>
         </tfoot>

@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ShoppingListController;
 use App\Http\Controllers\Api\ShoppingListItemController;
 use App\Http\Controllers\Api\ScheduleController;
+use App\Http\Controllers\Api\ScheduleReplacementController;
 use App\Http\Controllers\Api\TimeEntryController;
 use App\Http\Controllers\Api\TimeEntryCorrectionController;
 use App\Http\Controllers\Api\BreakController;
@@ -196,6 +197,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/schedules/{id}/validate-request', [ScheduleController::class, 'validateRequest']); // Valider un planning "request"
     Route::post('/schedules/publish', [ScheduleController::class, 'publishSchedule']); // Publier et envoyer le planning par email
     Route::apiResource('schedules', ScheduleController::class);
+
+    // Demandes de remplacement (employé : créer ; admin : lister, accepter, rejeter)
+    Route::post('/schedules/{scheduleId}/replacement-request', [ScheduleReplacementController::class, 'store']);
+    Route::get('/replacement-requests', [ScheduleReplacementController::class, 'index']);
+    Route::get('/replacement-requests/by-schedule-ids', [ScheduleReplacementController::class, 'getByScheduleIds']);
+    Route::put('/replacement-requests/{id}/respond', [ScheduleReplacementController::class, 'respond']);
 
     // Absences (programmé mais pas pointé)
     Route::get('/absences', [AbsenceController::class, 'index']);

@@ -130,6 +130,12 @@ class PayrollReportController extends Controller
 
         foreach ($timeEntries as $entry) {
             $breakMinutes = 0;
+            // Pause du pointage : pointage manuel = stocké en heures (ex. 0.5 pour 30 min), sinon en minutes (BreakController)
+            if ($entry->break_duration !== null && (float) $entry->break_duration > 0) {
+                $b = (float) $entry->break_duration;
+                $breakMinutes += $b < 1 ? (int) round($b * 60) : (int) round($b);
+            }
+            // Pauses enregistrées via "Démarrer pause" / "Terminer pause" (WorkBreak)
             if ($entry->breaks) {
                 foreach ($entry->breaks as $breakItem) {
                     if ($breakItem->duration_minutes) {
@@ -242,8 +248,12 @@ class PayrollReportController extends Controller
                 
                 $diffMinutes = round($diffMs / 60);
                 
-                // Soustraire les pauses
+                // Soustraire les pauses (pointage manuel en heures ou minutes selon source + WorkBreak)
                 $breakMinutes = 0;
+                if ($entry->break_duration !== null && (float) $entry->break_duration > 0) {
+                    $b = (float) $entry->break_duration;
+                    $breakMinutes += $b < 1 ? (int) round($b * 60) : (int) round($b);
+                }
                 if ($entry->breaks) {
                     foreach ($entry->breaks as $breakItem) {
                         if ($breakItem->duration_minutes) {
