@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             InitialDataSeeder::class,
             PermissionSeeder::class,
             SubscriptionPlanSeeder::class,
+            SuperAdminSeeder::class,
         ]);
 
         User::factory()->create([

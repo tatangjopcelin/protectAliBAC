@@ -33,6 +33,9 @@ use App\Http\Controllers\Api\AbsenceController;
 use App\Http\Controllers\Api\AccountSettingsController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\PushTokenController;
+use App\Http\Controllers\Api\SuperAdminController;
+use App\Http\Controllers\Api\SupportTicketController;
+use App\Http\Controllers\Api\InternalMessageController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -124,6 +127,24 @@ Route::middleware('auth:sanctum')->group(function () {
 // Routes pour le Dashboard (protégées)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
+});
+
+// Super admin : vue globale des établissements et tickets de support
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/super-admin/stores', [SuperAdminController::class, 'storesOverview']);
+    Route::get('/super-admin/subscription-balance', [SuperAdminController::class, 'subscriptionBalance']);
+    // Tickets de support (contact super admin)
+    Route::post('/support-tickets', [SupportTicketController::class, 'store']); // côté établissement
+    Route::get('/support-tickets/unread-count', [SupportTicketController::class, 'unreadCount']); // super admin : nombre de messages non lus
+    Route::post('/support-tickets/mark-seen', [SupportTicketController::class, 'markSeen']); // super admin : marquer tout comme lu
+    Route::get('/support-tickets', [SupportTicketController::class, 'index']); // liste (super admin = tous, autres = store courant)
+    Route::put('/support-tickets/{id}', [SupportTicketController::class, 'update']); // mise à jour (super admin)
+
+    // Messagerie interne entre utilisateurs d'un même établissement
+    Route::get('/internal-messages/recipients', [InternalMessageController::class, 'recipients']);
+    Route::get('/internal-messages/threads', [InternalMessageController::class, 'threads']);
+    Route::get('/internal-messages/with/{userId}', [InternalMessageController::class, 'conversationWith']);
+    Route::post('/internal-messages', [InternalMessageController::class, 'store']);
 });
 
 // Routes pour les commandes fournisseurs
