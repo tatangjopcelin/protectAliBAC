@@ -13,10 +13,12 @@ class InternalFeedRead extends Model
         'user_id',
         'store_id',
         'last_read_at',
+        'last_opened_at',
     ];
 
     protected $casts = [
         'last_read_at' => 'datetime',
+        'last_opened_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

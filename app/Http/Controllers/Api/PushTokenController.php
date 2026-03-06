@@ -37,17 +37,27 @@ class PushTokenController extends Controller
     }
 
     /**
-     * Envoyer une notification de test à l'utilisateur connecté (tous ses appareils enregistrés).
+     * Envoyer une notification de test à l'utilisateur connecté.
+     * Seuls les appareils iOS sont supportés (APNs). Android (FCM) à venir.
      */
     public function sendTest(Request $request, ApnService $apn): JsonResponse
     {
         $user = $request->user();
         $tokens = $user->pushTokens()->where('platform', 'ios')->get();
+        $androidCount = $user->pushTokens()->where('platform', 'android')->count();
 
         if ($tokens->isEmpty()) {
+            $message = $androidCount > 0
+                ? 'Le test de notification est disponible uniquement sur iPhone pour le moment.'
+                : 'Aucun appareil iOS enregistré. Connectez-vous sur l\'app iPhone, acceptez les notifications, puis réessayez.';
+            return response()->json(['message' => $message], 400);
+        }
+
+        $keyPath = config('services.apn.key_path');
+        if (! $keyPath || ! is_file($keyPath) || ! config('services.apn.key_id') || ! config('services.apn.team_id') || ! config('services.apn.bundle_id')) {
             return response()->json([
-                'message' => 'Aucun appareil enregistré. Connectez-vous sur l’app mobile et acceptez les notifications.',
-            ], 400);
+                'message' => 'APNs non configuré côté serveur. Définissez APN_KEY_ID, APN_TEAM_ID, APN_BUNDLE_ID et APN_KEY_PATH (fichier .p8) dans le .env du backend.',
+            ], 503);
         }
 
         $sent = 0;
@@ -74,7 +84,7 @@ class PushTokenController extends Controller
 
         if ($sent === 0) {
             return response()->json([
-                'message' => 'Impossible d’envoyer la notification. Vérifiez la config APNs (.env : APN_KEY_PATH, APN_KEY_ID, APN_TEAM_ID, APN_BUNDLE_ID).',
+                'message' => 'Impossible d\'envoyer la notification. Vérifiez la config APNs (.env : APN_KEY_PATH, APN_KEY_ID, APN_TEAM_ID, APN_BUNDLE_ID).',
                 'errors' => array_slice($errors, 0, 3),
             ], 502);
         }

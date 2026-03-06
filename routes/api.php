@@ -144,8 +144,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Messagerie interne : fil d'actualité de l'établissement (visible par tous les employés)
     Route::get('/internal-messages/feed', [InternalMessageController::class, 'feed']);
     Route::get('/internal-messages/unread-count', [InternalMessageController::class, 'unreadCount']);
+    Route::post('/internal-messages/mark-opened', [InternalMessageController::class, 'markAsOpened']);
     Route::post('/internal-messages/mark-read', [InternalMessageController::class, 'markAsRead']);
     Route::post('/internal-messages', [InternalMessageController::class, 'store']);
+    Route::put('/internal-messages/{id}', [InternalMessageController::class, 'update']);
+    Route::delete('/internal-messages/{id}', [InternalMessageController::class, 'destroy']);
 });
 
 // Routes pour les commandes fournisseurs

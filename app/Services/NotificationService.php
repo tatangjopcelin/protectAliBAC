@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Notification;
 use App\Models\NotificationPreference;
+use App\Models\PushToken;
 use App\Models\User;
 use App\Models\Product;
 use App\Models\Alert;
@@ -12,6 +13,10 @@ use Illuminate\Support\Facades\Log;
 
 class NotificationService
 {
+    public function __construct(
+        private readonly ApnService $apnService
+    ) {}
+
     /**
      * Envoie une notification selon les préférences de l'utilisateur
      */
@@ -74,14 +79,26 @@ class NotificationService
     }
 
     /**
-     * Envoie une notification push (à implémenter avec un service externe)
+     * Envoie une notification push aux appareils iOS enregistrés (APNs).
+     * Les appareils Android (FCM) ne sont pas encore gérés.
      */
     private function sendPushNotification(User $user, string $title, string $message, array $data = []): bool
     {
-        // La notification est déjà créée dans sendNotification
-        // Ici on peut ajouter l'intégration avec un service de push externe
-        // TODO: Intégrer avec un service de push (Firebase, Pusher, etc.)
-        return true;
+        $tokens = PushToken::where('user_id', $user->id)->where('platform', 'ios')->get();
+        if ($tokens->isEmpty()) {
+            return false;
+        }
+        $sent = false;
+        foreach ($tokens as $pushToken) {
+            try {
+                if ($this->apnService->send($pushToken->token, $title, $message, $data)) {
+                    $sent = true;
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Envoi push échoué', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+            }
+        }
+        return $sent;
     }
 
     /**

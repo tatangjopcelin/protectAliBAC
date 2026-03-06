@@ -82,11 +82,17 @@ class ProductPolicy
 
     /**
      * Determine whether the user can add stock.
+     * Admin, Chef, Directeur, Magasinier, Boucher, Cuisinier ou créateur du produit.
      */
     public function addStock(User $user, Product $product): bool
     {
-        // Seul l'admin ou le créateur peuvent ajouter du stock
-        return $this->canModify($user, $product);
+        if ($user->isAdmin() || $user->isChef() || $user->isDirector()) {
+            return true;
+        }
+        if ($user->isStorekeeper() || $user->isButcher() || $user->isCook()) {
+            return true;
+        }
+        return $this->isCreator($user, $product);
     }
 
     /**
