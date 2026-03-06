@@ -120,6 +120,7 @@ Route::apiResource('recipes', RecipeController::class);
 // Routes spéciales pour les alertes (AVANT apiResource pour éviter les conflits)
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/alerts/unread', [AlertController::class, 'unread']);
+    Route::post('/alerts/mark-all-read', [AlertController::class, 'markAllAsRead']);
     Route::post('/alerts/{alert}/read', [AlertController::class, 'markAsRead']);
     Route::apiResource('alerts', AlertController::class);
 });
@@ -140,10 +141,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/support-tickets', [SupportTicketController::class, 'index']); // liste (super admin = tous, autres = store courant)
     Route::put('/support-tickets/{id}', [SupportTicketController::class, 'update']); // mise à jour (super admin)
 
-    // Messagerie interne entre utilisateurs d'un même établissement
-    Route::get('/internal-messages/recipients', [InternalMessageController::class, 'recipients']);
-    Route::get('/internal-messages/threads', [InternalMessageController::class, 'threads']);
-    Route::get('/internal-messages/with/{userId}', [InternalMessageController::class, 'conversationWith']);
+    // Messagerie interne : fil d'actualité de l'établissement (visible par tous les employés)
+    Route::get('/internal-messages/feed', [InternalMessageController::class, 'feed']);
+    Route::get('/internal-messages/unread-count', [InternalMessageController::class, 'unreadCount']);
+    Route::post('/internal-messages/mark-read', [InternalMessageController::class, 'markAsRead']);
     Route::post('/internal-messages', [InternalMessageController::class, 'store']);
 });
 
