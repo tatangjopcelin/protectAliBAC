@@ -134,6 +134,8 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/super-admin/stores', [SuperAdminController::class, 'storesOverview']);
     Route::get('/super-admin/subscription-balance', [SuperAdminController::class, 'subscriptionBalance']);
+    Route::get('/super-admin/stores-for-email', [SuperAdminController::class, 'storesForEmail']);
+    Route::post('/super-admin/send-email', [SuperAdminController::class, 'sendEmail']);
     // Tickets de support (contact super admin)
     Route::post('/support-tickets', [SupportTicketController::class, 'store']); // côté établissement
     Route::get('/support-tickets/unread-count', [SupportTicketController::class, 'unreadCount']); // super admin : nombre de messages non lus

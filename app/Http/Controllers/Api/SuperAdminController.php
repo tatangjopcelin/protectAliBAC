@@ -8,6 +8,8 @@ use App\Models\SubscriptionPlan;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\SuperAdminBroadcast;
 use Stripe\Stripe;
 
 class SuperAdminController extends Controller
@@ -149,6 +151,131 @@ class SuperAdminController extends Controller
             'currency' => $currency,
             'is_estimate' => $isEstimate,
         ]);
+    }
+
+    /**
+     * Liste simplifiée des établissements avec email de l'admin pour l'envoi d'emails.
+     * Réservé au rôle super_admin.
+     */
+    public function storesForEmail(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || $user->role !== 'super_admin') {
+            return response()->json(['message' => 'Accès réservé au super administrateur'], 403);
+        }
+
+        $stores = Store::with(['users' => function ($q) {
+            $q->where('role', 'admin')->select('id', 'name', 'email', 'store_id');
+        }])
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        $result = $stores->map(function (Store $store) {
+            $admin = $store->users->first();
+            return [
+                'id' => $store->id,
+                'name' => $store->name,
+                'admin_email' => $admin?->email,
+                'admin_name' => $admin?->name,
+            ];
+        });
+
+        return response()->json(['data' => $result->values()]);
+    }
+
+    /**
+     * Envoi d'un email à un ou tous les établissements.
+     * Réservé au rôle super_admin.
+     */
+    public function sendEmail(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || $user->role !== 'super_admin') {
+            return response()->json(['message' => 'Accès réservé au super administrateur'], 403);
+        }
+
+        $validated = $request->validate([
+            'recipient_type' => 'required|in:single,all',
+            'store_id' => 'nullable|integer|exists:stores,id',
+            'subject' => 'required|string|max:255',
+            'body' => 'required|string|max:10000',
+        ]);
+
+        $sentCount = 0;
+        $errors = [];
+
+        if ($validated['recipient_type'] === 'single') {
+            if (empty($validated['store_id'])) {
+                return response()->json(['message' => 'store_id requis pour un envoi individuel'], 422);
+            }
+
+            $store = Store::with(['users' => function ($q) {
+                $q->where('role', 'admin');
+            }])->find($validated['store_id']);
+
+            if (!$store) {
+                return response()->json(['message' => 'Établissement introuvable'], 404);
+            }
+
+            $admin = $store->users->first();
+            if (!$admin || !$admin->email) {
+                return response()->json(['message' => 'Aucun admin avec email pour cet établissement'], 422);
+            }
+
+            try {
+                Mail::to($admin->email)->send(new SuperAdminBroadcast(
+                    $validated['subject'],
+                    $validated['body'],
+                    $store->name,
+                    $admin->name
+                ));
+                $sentCount = 1;
+            } catch (\Throwable $e) {
+                report($e);
+                return response()->json(['message' => 'Erreur lors de l\'envoi de l\'email: ' . $e->getMessage()], 500);
+            }
+        } else {
+            $stores = Store::with(['users' => function ($q) {
+                $q->where('role', 'admin');
+            }])
+                ->where('is_active', true)
+                ->get();
+
+            foreach ($stores as $store) {
+                $admin = $store->users->first();
+                if (!$admin || !$admin->email) {
+                    continue;
+                }
+
+                try {
+                    Mail::to($admin->email)->send(new SuperAdminBroadcast(
+                        $validated['subject'],
+                        $validated['body'],
+                        $store->name,
+                        $admin->name
+                    ));
+                    $sentCount++;
+                } catch (\Throwable $e) {
+                    report($e);
+                    $errors[] = $store->name;
+                }
+            }
+        }
+
+        $response = [
+            'success' => $sentCount > 0,
+            'message' => $sentCount > 0
+                ? "Email envoyé à {$sentCount} établissement(s)"
+                : 'Aucun email envoyé',
+            'sent_count' => $sentCount,
+        ];
+
+        if (!empty($errors)) {
+            $response['errors'] = $errors;
+        }
+
+        return response()->json($response);
     }
 }
 
