@@ -103,9 +103,12 @@ class DashboardController extends Controller
                     });
                 })
                 ->count(),
+            // Périmés : date dépassée ou aujourd'hui (aligné avec la page Produits périmés)
             'expired_count' => (clone $productsQuery)
-                ->where('status', 'expired')
-                ->where('quantity', '>', 0)
+                ->where(function ($q) {
+                    $q->where('status', 'expired')
+                      ->orWhere('expiration_date', '<=', Carbon::today());
+                })
                 ->count(),
         ];
     }
@@ -353,25 +356,9 @@ class DashboardController extends Controller
                 $q->where('store_id', $user->store_id);
             });
 
+        // À la date de péremption (aujourd'hui) le produit est "périmé", pas "expire bientôt" → today = []
         return [
-            'today' => (clone $productsQuery)
-                ->where('expiration_date', Carbon::today())
-                ->where('quantity', '>', 0)
-                ->with(['category', 'zone.store'])
-                ->get()
-                ->map(function ($product) {
-                    return [
-                        'id' => $product->id,
-                        'name' => $product->name,
-                        'quantity' => $product->quantity,
-                        'unit' => $product->unit,
-                        'expiration_date' => $product->expiration_date->format('Y-m-d'),
-                        'zone' => $product->zone->name ?? null,
-                        'store' => $product->zone->store->name ?? null,
-                    ];
-                })
-                ->values()
-                ->toArray(),
+            'today' => [],
             'tomorrow' => (clone $productsQuery)
                 ->where('expiration_date', Carbon::tomorrow())
                 ->where('quantity', '>', 0)

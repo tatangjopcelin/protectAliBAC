@@ -414,12 +414,12 @@ class ProductController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Convertir en int si c'est un string
+        // Convertir en int si c'est un string. Exclure le jour même : à la date de péremption le produit est "périmé", pas "expire bientôt"
         $days = (int) $days;
         $date = Carbon::today()->addDays($days);
         $products = Product::where('is_active', true)
             ->where('expiration_date', '<=', $date)
-            ->where('expiration_date', '>=', Carbon::today())
+            ->where('expiration_date', '>', Carbon::today())
             ->whereHas('zone', function($q) use ($user) {
                 if ($user->store_id) {
                     $q->where('store_id', $user->store_id);
@@ -442,9 +442,12 @@ class ProductController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
+        // Aligné avec le dashboard : statut périmé OU date dépassée (y compris aujourd'hui). Inclut stock à 0 (lots).
         $products = Product::where('is_active', true)
-            ->where('expiration_date', '<', Carbon::today())
-            ->where('quantity', '>', 0) // Seulement ceux qui ont encore du stock
+            ->where(function ($q) {
+                $q->where('status', 'expired')
+                  ->orWhere('expiration_date', '<=', Carbon::today());
+            })
             ->whereHas('zone', function($q) use ($user) {
                 if ($user->store_id) {
                     $q->where('store_id', $user->store_id);

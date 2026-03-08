@@ -83,18 +83,19 @@ class Product extends Model
 
     /**
      * Calcule le statut à partir de la date de péremption (sans sauvegarder).
-     * Utilisé pour l'affichage (liste produits) afin que le statut soit toujours à jour.
+     * Le jour même de la date de péremption (ex. 8/3/2026), le produit est déjà considéré périmé.
      */
     public function getComputedStatus(): string
     {
         if (!$this->expiration_date) {
             return $this->status ?? 'ok';
         }
-        $expirationDate = Carbon::parse($this->expiration_date);
-        if ($expirationDate->isPast()) {
+        $expirationDate = Carbon::parse($this->expiration_date)->startOfDay();
+        $today = Carbon::today();
+        if ($expirationDate->lte($today)) {
             return 'expired';
         }
-        if ($expirationDate->isToday() || $expirationDate->isTomorrow()) {
+        if ($expirationDate->isTomorrow()) {
             return 'warning';
         }
         return 'ok';
@@ -108,7 +109,8 @@ class Product extends Model
 
     public function isExpired(): bool
     {
-        return Carbon::parse($this->expiration_date)->isPast();
+        $expirationDate = Carbon::parse($this->expiration_date)->startOfDay();
+        return $expirationDate->lte(Carbon::today());
     }
 
     public function daysUntilExpiration(): int
