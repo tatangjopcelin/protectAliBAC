@@ -59,7 +59,9 @@ class TimeEntry extends Model
 
     /**
      * Calcule les heures travaillées automatiquement
-     * Utilise les heures réelles travaillées (clock_in à clock_out) moins les pauses
+     * Utilise les heures réelles (clock_in à clock_out) moins les pauses.
+     * Règle : si l'employé a pointé au moins une pause (WorkBreak), on ne compte que ces pauses ;
+     * sinon on utilise break_duration (pointage manuel) ou la pause planifiée du planning.
      */
     public function calculateHoursWorked(): float
     {
@@ -69,18 +71,12 @@ class TimeEntry extends Model
 
         $start = Carbon::parse($this->clock_in);
         $end = Carbon::parse($this->clock_out);
-        
-        // Calculer le total des pauses (break_duration + pauses réelles)
         $totalBreakMinutes = 0;
-        
-        // Ajouter break_duration si disponible (stocké en heures, convertir en minutes)
-        if ($this->break_duration) {
-            $totalBreakMinutes += (float)$this->break_duration * 60; // Convertir les heures en minutes
-        }
-        
-        // Ajouter toutes les pauses réelles
-        if ($this->breaks) {
-            foreach ($this->breaks as $break) {
+
+        // Pauses pointées (WorkBreak) : si au moins une existe, elles remplacent le reste
+        $punchedBreaks = $this->breaks ? $this->breaks->filter(fn ($b) => $b->end_break || $b->duration_minutes) : collect();
+        if ($punchedBreaks->isNotEmpty()) {
+            foreach ($punchedBreaks as $break) {
                 if ($break->end_break && $break->duration_minutes) {
                     $totalBreakMinutes += $break->duration_minutes;
                 } elseif ($break->start_break && $break->end_break) {
@@ -89,14 +85,21 @@ class TimeEntry extends Model
                     $totalBreakMinutes += abs($endBreak->diffInMinutes($startBreak));
                 }
             }
+        } else {
+            // Aucune pause pointée : break_duration (pointage manuel) ou pause planifiée du planning
+            if ($this->break_duration && (float) $this->break_duration > 0) {
+                $totalBreakMinutes += (float) $this->break_duration * 60;
+            }
+            if ($totalBreakMinutes === 0 && $this->schedule && $this->schedule->start_break && $this->schedule->end_break) {
+                $startBreak = Carbon::parse($this->schedule->start_break);
+                $endBreak = Carbon::parse($this->schedule->end_break);
+                $totalBreakMinutes += abs($endBreak->diffInMinutes($startBreak));
+            }
         }
-        
-        // Calculer la différence en minutes pour avoir une précision exacte
-        // Utiliser abs() pour s'assurer d'avoir une valeur positive
+
         $totalMinutes = abs($start->diffInMinutes($end));
         $netMinutes = max(0, $totalMinutes - $totalBreakMinutes);
-        
-        // Convertir en heures avec 2 décimales
+
         return round($netMinutes / 60, 2);
     }
 

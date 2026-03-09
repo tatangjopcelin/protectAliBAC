@@ -107,6 +107,39 @@ class PayrollReportController extends Controller
     }
 
     /**
+     * Minutes de pause pour un pointage (règle : pauses pointées écrasent la pause planifiée).
+     * Si l'employé a pointé au moins une pause (WorkBreak), on ne compte que celles-ci ;
+     * sinon on utilise break_duration (pointage manuel) ou la pause planifiée du planning.
+     */
+    private function getBreakMinutesForEntry(TimeEntry $entry): int
+    {
+        $punched = $entry->breaks ? $entry->breaks->filter(fn ($b) => $b->end_break || $b->duration_minutes) : collect();
+        if ($punched->isNotEmpty()) {
+            $total = 0;
+            foreach ($punched as $breakItem) {
+                if ($breakItem->duration_minutes) {
+                    $total += $breakItem->duration_minutes;
+                } elseif ($breakItem->start_break && $breakItem->end_break) {
+                    $startBreak = Carbon::parse($breakItem->start_break);
+                    $endBreak = Carbon::parse($breakItem->end_break);
+                    $total += (int) round(abs($endBreak->diffInMinutes($startBreak)));
+                }
+            }
+            return $total;
+        }
+        if ($entry->break_duration !== null && (float) $entry->break_duration > 0) {
+            $b = (float) $entry->break_duration;
+            return $b < 1 ? (int) round($b * 60) : (int) round($b);
+        }
+        if ($entry->schedule && $entry->schedule->start_break && $entry->schedule->end_break) {
+            $startBreak = Carbon::parse($entry->schedule->start_break);
+            $endBreak = Carbon::parse($entry->schedule->end_break);
+            return (int) round(abs($endBreak->diffInMinutes($startBreak)));
+        }
+        return 0;
+    }
+
+    /**
      * Construire les données pour le PDF récapitulatif des heures (pointages) d'un employé pour un mois.
      */
     private function getPayrollPdfData(User $employee, string $month): array
@@ -119,7 +152,7 @@ class PayrollReportController extends Controller
             ->whereBetween('date', [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')])
             ->whereNotNull('clock_in')
             ->whereNotNull('clock_out')
-            ->with('breaks')
+            ->with('breaks', 'schedule')
             ->orderBy('date')
             ->orderBy('clock_in')
             ->get();
@@ -129,27 +162,7 @@ class PayrollReportController extends Controller
         $totalBreakMinutes = 0;
 
         foreach ($timeEntries as $entry) {
-            $breakMinutes = 0;
-            // Pause du pointage : pointage manuel = stocké en heures (ex. 0.5 pour 30 min), sinon en minutes (BreakController)
-            if ($entry->break_duration !== null && (float) $entry->break_duration > 0) {
-                $b = (float) $entry->break_duration;
-                $breakMinutes += $b < 1 ? (int) round($b * 60) : (int) round($b);
-            }
-            // Pauses enregistrées via "Démarrer pause" / "Terminer pause" (WorkBreak)
-            if ($entry->breaks) {
-                foreach ($entry->breaks as $breakItem) {
-                    if ($breakItem->duration_minutes) {
-                        $breakMinutes += $breakItem->duration_minutes;
-                    } elseif ($breakItem->start_break && $breakItem->end_break) {
-                        $startBreak = Carbon::parse($breakItem->start_break);
-                        $endBreak = Carbon::parse($breakItem->end_break);
-                        $breakMs = $endBreak->getTimestamp() - $startBreak->getTimestamp();
-                        if ($breakMs > 0) {
-                            $breakMinutes += (int) round($breakMs / 60);
-                        }
-                    }
-                }
-            }
+            $breakMinutes = $this->getBreakMinutesForEntry($entry);
 
             $netMinutes = 0;
             if ($entry->hours_worked && $entry->hours_worked > 0) {
@@ -223,7 +236,7 @@ class PayrollReportController extends Controller
             ->whereBetween('date', [$monthStart->format('Y-m-d'), $monthEnd->format('Y-m-d')])
             ->whereNotNull('clock_in')
             ->whereNotNull('clock_out')
-            ->with('breaks')
+            ->with('breaks', 'schedule')
             ->orderBy('date')
             ->orderBy('clock_in')
             ->get();
@@ -231,44 +244,17 @@ class PayrollReportController extends Controller
         // Calculer le total d'heures
         $totalMinutes = 0;
         foreach ($timeEntries as $entry) {
-            // Utiliser hours_worked seulement s'il est > 0
             if ($entry->hours_worked && $entry->hours_worked > 0) {
                 $totalMinutes += $entry->hours_worked * 60;
-            } else if ($entry->clock_in && $entry->clock_out) {
+            } elseif ($entry->clock_in && $entry->clock_out) {
                 $clockIn = Carbon::parse($entry->clock_in);
                 $clockOut = Carbon::parse($entry->clock_out);
-                
-                // Calculer la différence en millisecondes puis convertir en minutes
                 $diffMs = $clockOut->getTimestamp() - $clockIn->getTimestamp();
-                
-                // Si clock_out est avant clock_in, utiliser la valeur absolue
                 if ($diffMs < 0) {
                     $diffMs = abs($diffMs);
                 }
-                
                 $diffMinutes = round($diffMs / 60);
-                
-                // Soustraire les pauses (pointage manuel en heures ou minutes selon source + WorkBreak)
-                $breakMinutes = 0;
-                if ($entry->break_duration !== null && (float) $entry->break_duration > 0) {
-                    $b = (float) $entry->break_duration;
-                    $breakMinutes += $b < 1 ? (int) round($b * 60) : (int) round($b);
-                }
-                if ($entry->breaks) {
-                    foreach ($entry->breaks as $breakItem) {
-                        if ($breakItem->duration_minutes) {
-                            $breakMinutes += $breakItem->duration_minutes;
-                        } else if ($breakItem->start_break && $breakItem->end_break) {
-                            $startBreak = Carbon::parse($breakItem->start_break);
-                            $endBreak = Carbon::parse($breakItem->end_break);
-                            $breakMs = $endBreak->getTimestamp() - $startBreak->getTimestamp();
-                            if ($breakMs > 0) {
-                                $breakMinutes += round($breakMs / 60);
-                            }
-                        }
-                    }
-                }
-                
+                $breakMinutes = $this->getBreakMinutesForEntry($entry);
                 $netMinutes = max(0, $diffMinutes - $breakMinutes);
                 $totalMinutes += $netMinutes;
             }

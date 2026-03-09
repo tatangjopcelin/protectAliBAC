@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Mail\UserCredentialsMail;
 use App\Models\User;
 use App\Models\SubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -120,6 +122,15 @@ class UserController extends Controller
             return response()->json(['message' => 'Accès refusé'], 403);
         }
 
+        // Normaliser pour éviter 422 (chaînes vides, types)
+        $request->merge([
+            'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
+            'email' => is_string($request->input('email')) ? trim($request->input('email')) : $request->input('email'),
+            'zone_id' => $this->normalizeZoneIdForStore($request->input('zone_id')),
+            'contract_hours_per_week' => $this->normalizeContractHours($request->input('contract_hours_per_week')),
+        ]);
+
+        $storeId = $request->user()->store_id;
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
@@ -129,7 +140,11 @@ class UserController extends Controller
                 'string',
                 Rule::in(['admin', 'chef', 'cook', 'storekeeper', 'accountant', 'butcher', 'server', 'director', 'machine']),
             ],
-            'zone_id' => 'nullable|exists:zones,id',
+            'zone_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('zones', 'id')->where('store_id', $storeId),
+            ],
             'contract_hours_per_week' => 'nullable|numeric|min:0|max:168',
         ]);
 
@@ -192,6 +207,12 @@ class UserController extends Controller
             'email_verified_at' => now(),
         ]);
         $user->load('zone:id,name,type');
+
+        try {
+            Mail::to($user->email)->send(new UserCredentialsMail($user, $validated['password']));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Envoi des identifiants par email échoué: ' . $e->getMessage());
+        }
 
         return response()->json([
             'message' => 'Utilisateur créé avec succès',
@@ -498,5 +519,35 @@ class UserController extends Controller
             'message' => 'Permissions mises à jour',
             'permissions' => $user->getSharedPermissionOverrides(),
         ]);
+    }
+
+    /**
+     * Normalise zone_id : vide, 0 ou null → null ; chaîne numérique → int (pour validation).
+     */
+    private function normalizeZoneIdForStore(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            $int = (int) $value;
+            return $int > 0 ? $int : null;
+        }
+        return null;
+    }
+
+    /**
+     * Normalise contract_hours_per_week : vide ou invalide → null (le contrôleur utilisera 35 par défaut).
+     */
+    private function normalizeContractHours(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            $num = (float) $value;
+            return ($num >= 0 && $num <= 168) ? $num : null;
+        }
+        return null;
     }
 }

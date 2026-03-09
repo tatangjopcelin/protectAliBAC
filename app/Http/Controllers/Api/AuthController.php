@@ -91,6 +91,16 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
+            // Normaliser les entrées pour éviter 422 (espaces, chaînes vides, types)
+            $request->merge([
+                'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
+                'email' => is_string($request->input('email')) ? trim($request->input('email')) : $request->input('email'),
+                'establishment_code' => $request->input('registration_type') === 'join_store' && $request->has('establishment_code')
+                    ? trim((string) $request->input('establishment_code'))
+                    : $request->input('establishment_code'),
+                'zone_id' => $this->normalizeZoneId($request->input('zone_id')),
+            ]);
+
             $validated = $request->validate([
                 'registration_type' => 'required|string|in:create_store,join_store',
                 
@@ -106,7 +116,7 @@ class AuthController extends Controller
                 'store_address' => 'nullable|string|max:500',
                 'store_phone' => 'nullable|string|max:20',
                 
-                // Code pour rejoindre un établissement
+                // Code pour rejoindre un établissement (4 caractères, doit exister dans stores)
                 'establishment_code' => 'required_if:registration_type,join_store|string|size:4|exists:stores,establishment_code',
             ]);
 
@@ -564,5 +574,20 @@ class AuthController extends Controller
                 'error' => config('app.debug') ? $e->getMessage() : 'Une erreur est survenue',
             ], 500);
         }
+    }
+
+    /**
+     * Normalise zone_id pour la validation : chaîne vide, 0 ou null → null ; chaîne numérique → int.
+     */
+    private function normalizeZoneId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === 0 || $value === '0') {
+            return null;
+        }
+        if (is_numeric($value)) {
+            $int = (int) $value;
+            return $int > 0 ? $int : null;
+        }
+        return null;
     }
 }
