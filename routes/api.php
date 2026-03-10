@@ -232,6 +232,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/replacement-requests/{id}/respond', [ScheduleReplacementController::class, 'respond']);
 
     // Absences (programmé mais pas pointé)
+    Route::get('/absences/computed', [AbsenceController::class, 'computed']);
     Route::get('/absences', [AbsenceController::class, 'index']);
     Route::put('/absences/{id}', [AbsenceController::class, 'update']);
     

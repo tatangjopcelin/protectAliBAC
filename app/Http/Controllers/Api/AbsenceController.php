@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Absence;
+use App\Models\Schedule;
+use App\Models\TimeEntry;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class AbsenceController extends Controller
@@ -74,6 +77,132 @@ class AbsenceController extends Controller
         $absence->load('user:id,name,email');
 
         return response()->json($this->formatAbsence($absence));
+    }
+
+    /**
+     * Absences calculées automatiquement : créneaux planifiés non pointés dont fin + 1h est dépassée.
+     * GET ?start_date=Y-m-d&end_date=Y-m-d&user_id= (optionnel)
+     * Retourne : { items: [{ date, schedule_id, planned_hours }, ...], total_count, total_hours }
+     */
+    public function computed(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        $canSeeAll = $user->hasSharedPermission('planning') || $user->isAdmin();
+        $requestedUserId = $request->has('user_id') ? (int) $request->user_id : null;
+        if (! $canSeeAll && ($requestedUserId === null || $requestedUserId !== $user->id)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+        if (! $startDate || ! $endDate) {
+            return response()->json(['message' => 'start_date et end_date requis'], 422);
+        }
+
+        $userId = $requestedUserId ?? $user->id;
+        $now = Carbon::now();
+
+        $schedules = Schedule::where('store_id', $user->store_id)
+            ->where('user_id', $userId)
+            ->where('status', '!=', 'cancelled')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->get();
+
+        $items = [];
+        $totalHours = 0.0;
+
+        foreach ($schedules as $schedule) {
+            $dateStr = $schedule->date->format('Y-m-d');
+            $endDateTime = Carbon::parse($dateStr.' '.$this->normalizeTime($schedule->end_time));
+            $deadline = $endDateTime->copy()->addHour();
+            if ($now->lt($deadline)) {
+                continue;
+            }
+
+            $hasCompletedPunch = TimeEntry::where('schedule_id', $schedule->id)
+                ->whereNotNull('clock_in')
+                ->whereNotNull('clock_out')
+                ->exists();
+            if ($hasCompletedPunch) {
+                continue;
+            }
+
+            $plannedHours = $this->schedulePlannedHours($schedule);
+            // Enregistrer l'absence en base (une par user/date) pour que l'admin puisse la marquer justifiée depuis la grille
+            $absence = Absence::firstOrCreate(
+                [
+                    'user_id' => $schedule->user_id,
+                    'date' => $dateStr,
+                ],
+                [
+                    'schedule_id' => $schedule->id,
+                    'store_id' => $schedule->store_id,
+                ]
+            );
+            $items[] = [
+                'date' => $dateStr,
+                'schedule_id' => $schedule->id,
+                'planned_hours' => round($plannedHours, 2),
+                'id' => $absence->id,
+                'is_justified' => (bool) $absence->is_justified,
+            ];
+            $totalHours += $plannedHours;
+        }
+
+        return response()->json([
+            'items' => $items,
+            'total_count' => count($items),
+            'total_hours' => round($totalHours, 2),
+        ]);
+    }
+
+    private function normalizeTime($value): string
+    {
+        if (! $value) {
+            return '00:00';
+        }
+        $str = is_string($value) ? trim($value) : (string) $value;
+        if (preg_match('/^\d{2}:\d{2}(:\d{2})?$/', $str)) {
+            return substr($str, 0, 5);
+        }
+        try {
+            return Carbon::parse($value)->format('H:i');
+        } catch (\Throwable $e) {
+            return '00:00';
+        }
+    }
+
+    private function schedulePlannedHours(Schedule $schedule): float
+    {
+        $start = $this->normalizeTime($schedule->start_time);
+        $end = $this->normalizeTime($schedule->end_time);
+        $dateStr = $schedule->date->format('Y-m-d');
+        $startDt = Carbon::parse($dateStr.' '.$start);
+        $endDt = Carbon::parse($dateStr.' '.$end);
+        if ($endDt->lte($startDt)) {
+            $endDt->addDay();
+        }
+        $totalMinutes = $startDt->diffInMinutes($endDt);
+
+        $breakMinutes = 0;
+        if ($schedule->start_break && $schedule->end_break) {
+            $bStart = $this->normalizeTime($schedule->start_break);
+            $bEnd = $this->normalizeTime($schedule->end_break);
+            $bStartDt = Carbon::parse($dateStr.' '.$bStart);
+            $bEndDt = Carbon::parse($dateStr.' '.$bEnd);
+            $breakMinutes = abs($bStartDt->diffInMinutes($bEndDt));
+        }
+        if ($breakMinutes === 0 && $schedule->break_duration !== null && (float) $schedule->break_duration > 0) {
+            $b = (float) $schedule->break_duration;
+            $breakMinutes = $b < 1 ? (int) round($b * 60) : (int) round($b);
+        }
+
+        $workMinutes = max(0, $totalMinutes - $breakMinutes);
+
+        return $workMinutes / 60.0;
     }
 
     private function formatAbsence(Absence $a): array
