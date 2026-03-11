@@ -42,7 +42,13 @@ class TaskController extends Controller
             $query->where('priority', $request->priority);
         }
 
-        $tasks = $query->orderBy('created_at', 'desc')->get();
+        // Trier par tâche à traiter en premier : date d'échéance la plus proche, puis priorité (urgent > haute > moyenne > basse)
+        $tasks = $query
+            ->orderByRaw('CASE WHEN due_date IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('due_date', 'asc')
+            ->orderByRaw("CASE priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END")
+            ->orderBy('created_at', 'asc')
+            ->get();
 
         return response()->json($tasks);
     }
@@ -66,12 +72,68 @@ class TaskController extends Controller
             'priority' => 'nullable|in:low,medium,high,urgent',
             'due_date' => 'nullable|date',
             'notes' => 'nullable|string',
+            'recurrence_days' => 'nullable|array',
+            'recurrence_days.*' => 'integer|min:1|max:7',
+            'recurrence_duration_months' => 'nullable|integer|min:1|max:24',
+            'recurrence_start_date' => 'nullable|date',
         ]);
 
         // Vérifier que l'utilisateur assigné appartient au même établissement
         $assignedUser = User::findOrFail($validated['assigned_to']);
         if ($assignedUser->store_id !== $user->store_id) {
             return response()->json(['message' => 'L\'employé doit appartenir au même établissement'], 403);
+        }
+
+        $recurrenceDays = array_values(array_unique(array_map('intval', $validated['recurrence_days'] ?? [])));
+        $recurrenceMonths = isset($validated['recurrence_duration_months']) ? (int) $validated['recurrence_duration_months'] : 0;
+        $useRecurrence = count($recurrenceDays) > 0 && $recurrenceMonths >= 1;
+
+        if ($useRecurrence) {
+            $startDate = isset($validated['recurrence_start_date'])
+                ? Carbon::parse($validated['recurrence_start_date'])->startOfDay()
+                : (isset($validated['due_date']) ? Carbon::parse($validated['due_date'])->startOfDay() : Carbon::today()->startOfDay());
+            $endDate = $startDate->copy()->addMonths($recurrenceMonths);
+            $weekStart = $startDate->copy()->startOfWeek(Carbon::MONDAY);
+            $occurrenceDates = [];
+
+            while ($weekStart->lt($endDate)) {
+                foreach ($recurrenceDays as $dayOfWeek) {
+                    $candidate = $weekStart->copy()->addDays($dayOfWeek - 1);
+                    if ($candidate->gte($startDate) && $candidate->lt($endDate)) {
+                        $occurrenceDates[] = $candidate->format('Y-m-d');
+                    }
+                }
+                $weekStart->addWeek();
+            }
+
+            $created = [];
+            foreach ($occurrenceDates as $dueDateStr) {
+                $task = Task::create([
+                    'store_id' => $user->store_id,
+                    'assigned_to' => $validated['assigned_to'],
+                    'assigned_by' => $user->id,
+                    'title' => $validated['title'],
+                    'description' => $validated['description'] ?? null,
+                    'priority' => $validated['priority'] ?? 'medium',
+                    'due_date' => $dueDateStr,
+                    'notes' => $validated['notes'] ?? null,
+                    'status' => 'pending',
+                ]);
+                $task->load(['assignedTo', 'assignedBy', 'store']);
+                $created[] = $task;
+                try {
+                    if ($assignedUser->email_verified_at) {
+                        $assignedUser->notify(new TaskCreatedNotification($task, $user));
+                    }
+                } catch (\Exception $e) {
+                    \Log::error('Erreur envoi notification tâche créée: ' . $e->getMessage());
+                }
+            }
+
+            return response()->json([
+                'task' => $created[0] ?? null,
+                'created_count' => count($created),
+            ], 201);
         }
 
         $task = Task::create([
@@ -86,10 +148,8 @@ class TaskController extends Controller
             'status' => 'pending',
         ]);
 
-        // Charger les relations pour la notification
         $task->load(['assignedTo', 'assignedBy', 'store']);
 
-        // Envoyer une notification par email à l'employé assigné
         try {
             if ($assignedUser->email_verified_at) {
                 $assignedUser->notify(new TaskCreatedNotification($task, $user));
@@ -133,6 +193,18 @@ class TaskController extends Controller
         // Vérifier si l'utilisateur essaie d'annuler la tâche
         if (isset($validated['status']) && $validated['status'] === 'cancelled' && !$canCancel) {
             return response()->json(['message' => 'Vous n\'avez pas la permission d\'annuler cette tâche'], 403);
+        }
+
+        // L'employé assigné ne peut pas démarrer ni terminer une tâche avant la date d'échéance
+        $isAssigneeOnly = $task->assigned_to === $user->id && !$canUpdateAll;
+        if ($isAssigneeOnly && isset($validated['status']) && in_array($validated['status'], ['in_progress', 'completed'], true)) {
+            $dueDate = $task->due_date ? Carbon::parse($task->due_date)->startOfDay() : null;
+            if ($dueDate && now()->startOfDay()->lt($dueDate)) {
+                $formatted = $dueDate->locale('fr_FR')->isoFormat('DD/MM/YYYY');
+                return response()->json([
+                    'message' => "Cette tâche ne peut pas être effectuée avant la date prévue. Date d'échéance : {$formatted}.",
+                ], 422);
+            }
         }
 
         // Si le statut passe à "in_progress", enregistrer la date de début
