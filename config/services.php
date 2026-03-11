@@ -50,4 +50,15 @@ return [
         'sandbox' => env('APN_SANDBOX', true), // true = développement
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Firebase Cloud Messaging (FCM) – notifications push Android
+    |--------------------------------------------------------------------------
+    | Fichier JSON du compte de service Firebase (Project settings > Service accounts).
+    | Télécharger la clé JSON et placer le fichier dans storage/app (ne pas le versionner).
+    */
+    'fcm' => [
+        'credentials_path' => env('FCM_CREDENTIALS_JSON', storage_path('app/firebase-credentials.json')),
+    ],
+
 ];

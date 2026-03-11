@@ -14,7 +14,8 @@ use Illuminate\Support\Facades\Log;
 class NotificationService
 {
     public function __construct(
-        private readonly ApnService $apnService
+        private readonly ApnService $apnService,
+        private readonly FcmService $fcmService
     ) {}
 
     /**
@@ -79,23 +80,28 @@ class NotificationService
     }
 
     /**
-     * Envoie une notification push aux appareils iOS enregistrés (APNs).
-     * Les appareils Android (FCM) ne sont pas encore gérés.
+     * Envoie une notification push aux appareils enregistrés (iOS via APNs, Android via FCM).
      */
     private function sendPushNotification(User $user, string $title, string $message, array $data = []): bool
     {
-        $tokens = PushToken::where('user_id', $user->id)->where('platform', 'ios')->get();
+        $tokens = PushToken::where('user_id', $user->id)->get();
         if ($tokens->isEmpty()) {
             return false;
         }
         $sent = false;
         foreach ($tokens as $pushToken) {
             try {
-                if ($this->apnService->send($pushToken->token, $title, $message, $data)) {
-                    $sent = true;
+                if ($pushToken->platform === 'ios') {
+                    if ($this->apnService->send($pushToken->token, $title, $message, $data)) {
+                        $sent = true;
+                    }
+                } elseif ($pushToken->platform === 'android' && $this->fcmService->isConfigured()) {
+                    if ($this->fcmService->send($pushToken->token, $title, $message, $data)) {
+                        $sent = true;
+                    }
                 }
             } catch (\Throwable $e) {
-                Log::warning('Envoi push échoué', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+                Log::warning('Envoi push échoué', ['user_id' => $user->id, 'platform' => $pushToken->platform, 'error' => $e->getMessage()]);
             }
         }
         return $sent;

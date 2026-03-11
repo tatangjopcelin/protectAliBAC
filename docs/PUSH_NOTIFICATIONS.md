@@ -50,37 +50,45 @@ Sans ces variables (ou avec un chemin invalide), le backend renverra **503** et 
 
 ---
 
-### 3. Vous êtes sur Android
+### 3. Côté backend : FCM non configuré (Android)
 
-Actuellement, **le test de notification** (« Envoyer une notification de test ») est implémenté uniquement pour **iOS** (APNs). Sur Android :
+Le serveur envoie les notifications Android via **Firebase Cloud Messaging (FCM)**. Si la configuration est manquante, le test renverra une erreur du type :  
+*« FCM non configuré (Android). Définissez FCM_CREDENTIALS_JSON dans le .env. »*
 
-- L’app peut enregistrer le token push (FCM) et l’envoyer au backend.
-- Mais le backend **n’envoie pas encore** de notification de test aux appareils Android (FCM non branché côté serveur).
+À faire :
 
-Vous verrez par exemple :  
-*« Le test de notification est disponible uniquement sur iPhone pour le moment. »*  
-Pour avoir les push sur Android plus tard, il faudra configurer Firebase (FCM) côté backend et appeler l’API FCM pour l’envoi.
+1. **Créer un projet Firebase** (ou utiliser un existant) sur [Firebase Console](https://console.firebase.google.com).
+2. **Activer Cloud Messaging** et lier l’app Android (package `com.tdblg.app`) avec le fichier `google-services.json` dans `frontend/android/app/`.
+3. **Générer une clé de compte de service** : Firebase Console → Project settings → Service accounts → Generate new private key. Télécharger le fichier JSON.
+4. **Placer le fichier** dans le backend (ex. `protectAli/storage/app/firebase-credentials.json`) et **ne pas le versionner** (ajouter à `.gitignore` si besoin).
+5. **Renseigner le `.env`** du backend :
+
+   ```env
+   FCM_CREDENTIALS_JSON=storage/app/firebase-credentials.json
+   ```
+   (ou chemin absolu vers le fichier JSON.)
+
+Sans cette variable (ou avec un fichier invalide), le backend ne pourra pas envoyer de notification de test aux appareils Android.
 
 ---
 
-### 4. Aucun appareil iOS enregistré
+### 4. Aucun appareil enregistré (iOS ou Android)
 
-Si vous êtes bien sur l’app **iPhone** et que le test indique qu’aucun appareil n’est enregistré :
+Si le test indique qu’aucun appareil n’est enregistré :
 
-- Vous devez **accepter les notifications** quand l’app le demande (au démarrage ou après connexion).
-- Si vous avez refusé : **Réglages iPhone → Brole → Notifications** → activer les notifications, puis rouvrir l’app et vous reconnecter pour que le token soit enregistré.
-- Vérifier que l’app a bien la **capability Push Notifications** dans Xcode (Signing & Capabilities) et que le projet iOS est à jour (`npx cap sync ios`).
+- **iOS** : accepter les notifications quand l’app le demande. Si vous avez refusé : Réglages iPhone → Brole → Notifications → activer, puis rouvrir l’app et vous reconnecter. Vérifier la **capability Push Notifications** dans Xcode et faire `npx cap sync ios`.
+- **Android** : accepter les notifications à l’invite. Vérifier que `google-services.json` est bien présent dans `frontend/android/app/` (téléchargé depuis Firebase Console pour le package `com.tdblg.app`). Rebuild l’app et vous reconnecter.
 
-Une fois le token enregistré et le backend configuré (APNs), le test doit envoyer une notification sur l’appareil.
+Une fois le token enregistré et le backend configuré (APNs pour iOS, FCM pour Android), le test doit envoyer une notification sur l’appareil.
 
 ---
 
 ### 5. Envoi réel des notifications (alertes, tâches, etc.)
 
-Le service backend `NotificationService` envoie désormais les notifications push aux **appareils iOS** enregistrés (via `PushToken` + `ApnService`). Les événements qui déclenchent une notification (alertes, tâches, etc.) enverront bien une push sur iPhone si :
+Le service backend `NotificationService` envoie les notifications push aux appareils enregistrés : **iOS** via `ApnService` (APNs), **Android** via `FcmService` (FCM). Les événements (alertes, tâches, etc.) enverront une push si :
 
-- APNs est configuré dans le `.env` (voir §2).
-- L’utilisateur a au moins un token iOS enregistré (voir §4).
+- **iOS** : APNs est configuré dans le `.env` (voir §2) et l’utilisateur a au moins un token iOS.
+- **Android** : FCM est configuré (voir §3) et l’utilisateur a au moins un token Android.
 
 ---
 
@@ -89,9 +97,10 @@ Le service backend `NotificationService` envoie désormais les notifications pus
 | Étape | À vérifier |
 |--------|------------|
 | App | Tester sur l’**app native** (iPhone/Android), pas dans le navigateur. |
-| iOS | Capability **Push Notifications** activée dans Xcode. |
-| iPhone | Notifications **autorisées** pour Brole dans Réglages. |
-| Backend | `.env` avec `APN_KEY_ID`, `APN_TEAM_ID`, `APN_BUNDLE_ID`, `APN_KEY_PATH` (fichier .p8 valide). |
-| Test | Mon compte → « Envoyer une notification de test » après connexion sur iPhone. |
+| iOS | Capability **Push Notifications** activée dans Xcode ; notifications autorisées pour Brole dans Réglages. |
+| Android | Fichier **google-services.json** dans `frontend/android/app/` ; notifications autorisées pour l’app. |
+| Backend iOS | `.env` avec `APN_KEY_ID`, `APN_TEAM_ID`, `APN_BUNDLE_ID`, `APN_KEY_PATH` (fichier .p8 valide). |
+| Backend Android | `.env` avec `FCM_CREDENTIALS_JSON` pointant vers le fichier JSON du compte de service Firebase. |
+| Test | Mon compte → « Envoyer une notification de test » après connexion sur l’app. |
 
 Si après tout ça le test échoue encore, regarder les **logs Laravel** (`storage/logs/laravel.log`) et les réponses API (code 400 / 502 / 503) pour le message exact renvoyé par le backend.
