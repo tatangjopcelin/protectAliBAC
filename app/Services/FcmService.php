@@ -22,6 +22,9 @@ class FcmService
 
     private ?int $tokenExpiresAt = null;
 
+    /** Dernière erreur renvoyée par FCM (pour affichage à l'utilisateur). */
+    private ?string $lastError = null;
+
     /**
      * Envoie une notification push à un appareil Android via FCM HTTP v1.
      *
@@ -92,18 +95,48 @@ class FcmService
         curl_close($ch);
 
         if ($error) {
+            $this->lastError = 'Erreur réseau : ' . $error;
             Log::warning('FCM curl error', ['error' => $error]);
 
             return false;
         }
 
         if ($httpCode !== 200) {
+            $this->lastError = $this->parseFcmError($response, $httpCode);
             Log::warning('FCM response error', ['code' => $httpCode, 'body' => $response]);
 
             return false;
         }
 
+        $this->lastError = null;
+
         return true;
+    }
+
+    /** Retourne la dernière erreur FCM (pour affichage dans l'API test). */
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
+    }
+
+    private function parseFcmError(?string $response, int $httpCode): string
+    {
+        if ($response) {
+            $data = json_decode($response, true);
+            $msg = is_array($data) ? ($data['error']['message'] ?? $data['error']['status'] ?? null) : null;
+            if ($msg) {
+                if (str_contains($msg, 'UNREGISTERED') || str_contains($msg, 'NOT_FOUND')) {
+                    return 'Token invalide ou expiré. Réouvrez l\'app, connectez-vous, puis réessayez.';
+                }
+                if (str_contains($msg, 'INVALID_ARGUMENT')) {
+                    return 'Token FCM invalide. Réenregistrez l\'app (déconnexion puis reconnexion).';
+                }
+
+                return $msg;
+            }
+        }
+
+        return "FCM a refusé l'envoi (HTTP {$httpCode}).";
     }
 
     /**

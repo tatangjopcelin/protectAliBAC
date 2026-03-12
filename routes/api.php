@@ -170,16 +170,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/ai/suggestions/{id}/status', [AIController::class, 'updateStatus']); // Mettre à jour le statut d'une suggestion
 });
 
-// Routes pour les notifications
-Route::get('/notifications', [NotificationController::class, 'index']);
-Route::get('/notifications/unread', [NotificationController::class, 'unread']);
-Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+// Routes pour les notifications (protégées : l'utilisateur doit être connecté pour voir ses notifications)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread', [NotificationController::class, 'unread']);
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/mine', [NotificationController::class, 'deleteMine']);
+});
 
 // Routes pour les préférences de notification
-Route::get('/notification-preferences', [NotificationPreferenceController::class, 'index']);
-Route::post('/notification-preferences', [NotificationPreferenceController::class, 'store']);
-Route::put('/notification-preferences/{id}', [NotificationPreferenceController::class, 'update']);
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/notification-preferences', [NotificationPreferenceController::class, 'index']);
+    Route::post('/notification-preferences', [NotificationPreferenceController::class, 'store']);
+    Route::put('/notification-preferences/{id}', [NotificationPreferenceController::class, 'update']);
+});
 
 // Routes pour la gestion des rôles et permissions
 Route::middleware('auth:sanctum')->group(function () {

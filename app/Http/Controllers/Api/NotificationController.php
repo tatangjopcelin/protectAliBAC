@@ -53,4 +53,20 @@ class NotificationController extends Controller
 
         return response()->json(['message' => 'Toutes les notifications ont été marquées comme lues']);
     }
+
+    /**
+     * Supprime en base toutes les notifications de l'utilisateur connecté.
+     * Seules les notifications de cet employé sont supprimées (pas celles des autres).
+     */
+    public function deleteMine(Request $request)
+    {
+        $userId = $request->user()?->id;
+        if (!$userId) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $deleted = Notification::where('user_id', $userId)->delete();
+
+        return response()->json(['message' => 'Notifications supprimées', 'deleted' => $deleted]);
+    }
 }

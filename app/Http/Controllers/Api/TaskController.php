@@ -174,6 +174,11 @@ class TaskController extends Controller
         }
         $task = $task->firstOrFail();
 
+        // Ne pas modifier une tâche déjà terminée
+        if ($task->status === 'completed') {
+            return response()->json(['message' => 'Une tâche terminée ne peut pas être modifiée.'], 422);
+        }
+
         // L'employé assigné peut mettre à jour le statut et les notes
         // Admin/chef/directeur peuvent tout modifier
         $canUpdateAll = $user->hasSharedPermission('tasks') || $task->assigned_by === $user->id;

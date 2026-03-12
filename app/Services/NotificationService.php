@@ -23,10 +23,11 @@ class NotificationService
      */
     public function sendNotification(User $user, string $channel, string $title, string $message, array $data = [], string $type = 'push'): bool
     {
-        // Toujours créer une notification en base de données
+        // Toujours créer une notification en base de données (avec store_id pour multi-établissements)
         try {
             Notification::create([
                 'user_id' => $user->id,
+                'store_id' => $user->store_id,
                 'type' => $type,
                 'channel' => $channel,
                 'title' => $title,

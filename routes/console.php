@@ -43,3 +43,8 @@ Schedule::command('super-tasks:check-weekly')
 Schedule::command('absences:detect')
     ->dailyAt('01:00')
     ->description('Enregistre les absences des employés programmés qui n\'ont pas pointé la veille');
+
+// Notifier les employés des tâches à effectuer aujourd'hui (email, push, alerte in-app) chaque jour à 7h00
+Schedule::command('tasks:notify-due-today')
+    ->dailyAt('07:00')
+    ->description('Envoie email, push et alerte aux employés pour les tâches dues aujourd\'hui');

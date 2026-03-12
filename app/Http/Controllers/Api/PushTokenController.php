@@ -113,6 +113,10 @@ class PushTokenController extends Controller
             if (! $fcm->isConfigured() && ! $androidTokens->isEmpty()) {
                 $message .= ' FCM non configuré (.env : FCM_CREDENTIALS_JSON).';
             }
+            $fcmError = $fcm->getLastError();
+            if ($fcmError && ! $androidTokens->isEmpty()) {
+                $message .= ' ' . $fcmError;
+            }
 
             return response()->json([
                 'message' => trim($message),
