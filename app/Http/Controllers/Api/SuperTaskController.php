@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\SuperTask;
 use App\Models\User;
 use App\Notifications\SuperTaskAssignedNotification;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -67,7 +68,8 @@ class SuperTaskController extends Controller
             $query->where('week_start_date', $request->week_start_date);
         }
 
-        $superTasks = $query->orderBy('week_start_date', 'desc')
+        // Ordre : de la super tâche la plus proche à exécuter à la plus lointaine
+        $superTasks = $query->orderBy('week_start_date', 'asc')
             ->orderBy('type', 'asc')
             ->get();
 
@@ -90,7 +92,8 @@ class SuperTaskController extends Controller
         $superTasks = SuperTask::where('assigned_to', $user->id)
             ->with(['assignedBy', 'store'])
             ->where('status', '!=', 'completed')
-            ->orderBy('week_start_date', 'desc')
+            // Les prochaines super tâches à faire en premier
+            ->orderBy('week_start_date', 'asc')
             ->get();
 
         // Formater week_start_date au format Y-m-d
@@ -138,8 +141,10 @@ class SuperTaskController extends Controller
             'week_start_date' => 'required|date',
         ]);
 
-        // Normaliser la date au format Y-m-d
-        $validated['week_start_date'] = Carbon::parse($validated['week_start_date'])->format('Y-m-d');
+        // Normaliser au lundi de la semaine sélectionnée (permettre plusieurs semaines)
+        $validated['week_start_date'] = Carbon::parse($validated['week_start_date'])
+            ->startOfWeek(Carbon::MONDAY)
+            ->format('Y-m-d');
 
         // Vérifier que l'utilisateur assigné appartient au même établissement
         $assignedUser = User::findOrFail($validated['assigned_to']);
@@ -147,16 +152,13 @@ class SuperTaskController extends Controller
             return response()->json(['message' => 'L\'employé doit appartenir au même établissement'], 403);
         }
 
-        // Calculer le lundi et le dimanche de la semaine en cours
-        $today = Carbon::now();
-        $currentWeekStart = $today->copy()->startOfWeek(Carbon::MONDAY)->format('Y-m-d');
-        $currentWeekEnd = $today->copy()->endOfWeek(Carbon::SUNDAY)->format('Y-m-d');
-        $selectedWeekStart = $validated['week_start_date'];
+        $today = Carbon::now()->startOfWeek(Carbon::MONDAY);
+        $minWeek = $today->copy()->subWeeks(1)->format('Y-m-d');   // jusqu'à 1 semaine en arrière
+        $maxWeek = $today->copy()->addWeeks(52)->format('Y-m-d');   // jusqu'à 52 semaines à l'avance
 
-        // Vérifier que la date sélectionnée est dans la semaine en cours (lundi à dimanche)
-        if ($selectedWeekStart < $currentWeekStart || $selectedWeekStart > $currentWeekEnd) {
+        if ($validated['week_start_date'] < $minWeek || $validated['week_start_date'] > $maxWeek) {
             return response()->json([
-                'message' => 'Vous ne pouvez créer une super tâche que pour la semaine en cours (du lundi au dimanche)'
+                'message' => 'La semaine doit être entre ' . Carbon::parse($minWeek)->format('d/m/Y') . ' et ' . Carbon::parse($maxWeek)->format('d/m/Y')
             ], 400);
         }
 
@@ -170,20 +172,6 @@ class SuperTaskController extends Controller
             return response()->json(['message' => 'Une super tâche de ce type existe déjà pour cette semaine'], 409);
         }
 
-        // Compter les super tâches existantes pour la semaine en cours (tous types confondus)
-        $existingTasksCount = SuperTask::where('store_id', $user->store_id)
-            ->where('week_start_date', $currentWeekStart)
-            ->count();
-
-        // Pour créer une deuxième super tâche (type différent) pour la semaine en cours,
-        // vérifier qu'au moins une super tâche (Friteuse ou Chambre froide) existe déjà
-        if ($existingTasksCount === 0) {
-            // C'est la première super tâche de la semaine, on peut la créer sans condition
-        } else {
-            // Au moins une super tâche existe déjà, on peut créer une deuxième (type différent)
-            // La vérification ci-dessus empêche déjà de créer deux super tâches du même type
-        }
-
         $superTask = SuperTask::create([
             'store_id' => $user->store_id,
             'type' => $validated['type'],
@@ -195,15 +183,7 @@ class SuperTaskController extends Controller
 
         // Charger les relations
         $superTask->load(['assignedTo', 'assignedBy', 'store']);
-
-        // Envoyer une notification par email à l'employé assigné
-        try {
-            if ($assignedUser->email_verified_at) {
-                $assignedUser->notify(new SuperTaskAssignedNotification($superTask, $user));
-            }
-        } catch (\Exception $e) {
-            Log::error('Erreur envoi notification super tâche assignée: ' . $e->getMessage());
-        }
+        $this->notifySuperTaskAssigned($superTask, $assignedUser, $user);
 
         // Formater week_start_date
         $superTask = $this->formatSuperTask($superTask);
@@ -235,7 +215,7 @@ class SuperTaskController extends Controller
         $validated = $request->validate([
             'assigned_to' => $canUpdateAll ? 'sometimes|exists:users,id' : 'prohibited',
             'week_start_date' => $canUpdateAll ? 'sometimes|date' : 'prohibited',
-            'status' => $canUpdateStatus ? 'sometimes|in:pending,in_progress,completed' : 'prohibited',
+            'status' => $canUpdateStatus ? 'sometimes|in:pending,in_progress,completed,absent' : 'prohibited',
             'oil_changed' => $superTask->type === 'friteuse' ? 'nullable|boolean' : 'prohibited',
             'cleaned' => $superTask->type === 'friteuse' ? 'nullable|boolean' : 'prohibited',
             'friteuse_notes' => $superTask->type === 'friteuse' ? 'nullable|string' : 'prohibited',
@@ -264,8 +244,19 @@ class SuperTaskController extends Controller
         // Vérifier qu'il n'y a pas déjà une super tâche de ce type pour la semaine si la date change
         $weekDateChanged = false;
         if (isset($validated['week_start_date'])) {
-            // Normaliser la date au format Y-m-d
-            $validated['week_start_date'] = Carbon::parse($validated['week_start_date'])->format('Y-m-d');
+            // Normaliser au lundi de la semaine
+            $validated['week_start_date'] = Carbon::parse($validated['week_start_date'])
+                ->startOfWeek(Carbon::MONDAY)
+                ->format('Y-m-d');
+
+            $today = Carbon::now()->startOfWeek(Carbon::MONDAY);
+            $minWeek = $today->copy()->subWeeks(1)->format('Y-m-d');
+            $maxWeek = $today->copy()->addWeeks(52)->format('Y-m-d');
+            if ($validated['week_start_date'] < $minWeek || $validated['week_start_date'] > $maxWeek) {
+                return response()->json([
+                    'message' => 'La semaine doit être entre ' . Carbon::parse($minWeek)->format('d/m/Y') . ' et ' . Carbon::parse($maxWeek)->format('d/m/Y')
+                ], 400);
+            }
             
             // Normaliser les dates pour la comparaison (Carbon vs string)
             $newWeekDate = $validated['week_start_date'];
@@ -321,9 +312,7 @@ class SuperTaskController extends Controller
         if ($assignedToChanged && $newAssignedToId && $superTask->status !== 'completed') {
             try {
                 $newAssignedUser = User::findOrFail($newAssignedToId);
-                if ($newAssignedUser->email_verified_at) {
-                    $newAssignedUser->notify(new SuperTaskAssignedNotification($superTask, $user));
-                }
+                $this->notifySuperTaskAssigned($superTask, $newAssignedUser, $user);
             } catch (\Exception $e) {
                 Log::error('Erreur envoi notification super tâche réassignée: ' . $e->getMessage());
             }
@@ -334,6 +323,103 @@ class SuperTaskController extends Controller
         $superTask = $this->formatSuperTask($superTask);
 
         return response()->json($superTask);
+    }
+
+    /**
+     * Programme des super tâches sur plusieurs mois : un jour fixe par semaine (ex. tous les lundis ou tous les samedis).
+     * Crée une super tâche par semaine sur la période, sauf si une existe déjà pour ce type et cette semaine.
+     *
+     * Body: type, day_of_week (1=lundi … 7=dimanche), months (1-12), assigned_to
+     */
+    public function schedule(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (!$user->hasSharedPermission('tasks')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'type' => 'required|in:friteuse,chambre_froide',
+            'day_of_week' => 'required|integer|min:1|max:7', // 1 = lundi, 7 = dimanche
+            'months' => 'required|integer|min:1|max:12',
+            'assigned_to' => 'required|exists:users,id',
+        ]);
+
+        $assignedUser = User::findOrFail($validated['assigned_to']);
+        if ($assignedUser->store_id !== $user->store_id) {
+            return response()->json(['message' => 'L\'employé doit appartenir au même établissement'], 403);
+        }
+
+        $startMonday = Carbon::now()->startOfWeek(Carbon::MONDAY);
+        $endDate = $startMonday->copy()->addMonths((int) $validated['months']);
+        $created = [];
+        $skipped = 0;
+
+        $currentMonday = $startMonday->copy();
+        while ($currentMonday->lt($endDate)) {
+            $weekStart = $currentMonday->format('Y-m-d');
+            $exists = SuperTask::where('store_id', $user->store_id)
+                ->where('type', $validated['type'])
+                ->where('week_start_date', $weekStart)
+                ->exists();
+
+            if (!$exists) {
+                $superTask = SuperTask::create([
+                    'store_id' => $user->store_id,
+                    'type' => $validated['type'],
+                    'assigned_to' => $assignedUser->id,
+                    'assigned_by' => $user->id,
+                    'week_start_date' => $weekStart,
+                    'status' => 'pending',
+                ]);
+                $superTask->load(['assignedTo', 'assignedBy', 'store']);
+                $this->notifySuperTaskAssigned($superTask, $assignedUser, $user);
+                $created[] = $this->formatSuperTask($superTask);
+            } else {
+                $skipped++;
+            }
+            $currentMonday->addWeek();
+        }
+
+        return response()->json([
+            'message' => count($created) . ' super tâche(s) créée(s)' . ($skipped > 0 ? ', ' . $skipped . ' déjà existante(s) ignorée(s).' : '.'),
+            'created' => count($created),
+            'skipped' => $skipped,
+            'super_tasks' => $created,
+        ], 201);
+    }
+
+    /**
+     * Envoie email + push + SMS à l'employé assigné pour une super tâche.
+     */
+    private function notifySuperTaskAssigned(SuperTask $superTask, User $assignedUser, User $creator): void
+    {
+        try {
+            if ($assignedUser->email_verified_at) {
+                $assignedUser->notify(new SuperTaskAssignedNotification($superTask, $creator));
+            }
+        } catch (\Exception $e) {
+            Log::error('Erreur envoi notification super tâche assignée: ' . $e->getMessage());
+        }
+        $typeLabel = $superTask->type === 'friteuse' ? 'Friteuse' : 'Chambre froide';
+        $weekLabel = Carbon::parse($superTask->week_start_date)->locale('fr')->format('d/m/Y');
+        $shortMessage = "Super tâche {$typeLabel} assignée pour la semaine du {$weekLabel}. Consultez l'app Brole.";
+        app(NotificationService::class)->sendNotification(
+            $assignedUser,
+            'super_task_assigned',
+            'Super tâche assignée',
+            $shortMessage,
+            [
+                'route' => '/tabs/super-tasks',
+                'screen' => 'super-tasks',
+                'super_task_id' => (string) $superTask->id,
+                'type' => $superTask->type,
+            ],
+            'all'
+        );
     }
 
     /**

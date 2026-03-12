@@ -61,4 +61,18 @@ return [
         'credentials_path' => env('FCM_CREDENTIALS_JSON', storage_path('app/firebase-credentials.json')),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Twilio SMS (France)
+    |--------------------------------------------------------------------------
+    | Compte Twilio : https://www.twilio.com/console
+    | Numéro d'envoi : acheter un numéro français (ou utiliser le numéro d'essai).
+    | Format des numéros côté app : 06 12 34 56 78 ou +33612345678 (E.164).
+    */
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_FROM'), // ex. +33600000000 ou numéro Twilio
+    ],
+
 ];

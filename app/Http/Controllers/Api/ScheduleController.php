@@ -5,10 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Schedule;
 use App\Models\User;
+use App\Notifications\SchedulePublishedNotification;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Notifications\SchedulePublishedNotification;
 use Carbon\Carbon;
 
 class ScheduleController extends Controller
@@ -643,6 +644,21 @@ class ScheduleController extends Controller
                     $weekEnd->format('Y-m-d'),
                     $user
                 ));
+
+                // Push + SMS : planning publié (email déjà envoyé via SchedulePublishedNotification ci-dessus)
+                app(NotificationService::class)->sendNotification(
+                    $employee,
+                    'schedule_published',
+                    'Planning publié',
+                    'Votre planning de la semaine est en ligne. Consultez l\'app Brole.',
+                    [
+                        'route' => '/tabs/schedule',
+                        'screen' => 'schedule',
+                        'start_date' => $weekStart->format('Y-m-d'),
+                        'end_date' => $weekEnd->format('Y-m-d'),
+                    ],
+                    'all'
+                );
 
                 $sentCount++;
             } catch (\Exception $e) {

@@ -176,6 +176,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications/unread', [NotificationController::class, 'unread']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
     Route::delete('/notifications/mine', [NotificationController::class, 'deleteMine']);
 });
 
@@ -277,6 +278,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Routes pour les super tâches
     Route::get('/super-tasks/my', [SuperTaskController::class, 'mySuperTasks']); // Mes super tâches
     Route::get('/super-tasks/has-pending', [SuperTaskController::class, 'hasPendingSuperTasks']); // Vérifier si l'utilisateur a des super tâches en attente
+    Route::post('/super-tasks/schedule', [SuperTaskController::class, 'schedule']); // Programmer sur X mois (jour + durée)
     Route::apiResource('super-tasks', SuperTaskController::class);
     
     // Routes pour les congés

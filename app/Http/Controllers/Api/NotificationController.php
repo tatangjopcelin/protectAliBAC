@@ -45,6 +45,20 @@ class NotificationController extends Controller
         return response()->json($notification);
     }
 
+    /**
+     * Supprime une notification en base (quand l'utilisateur clique sur "vue").
+     * Seule la notification de cet utilisateur peut être supprimée.
+     */
+    public function destroy(Request $request, string $id)
+    {
+        $notification = Notification::where('user_id', $request->user()?->id)
+            ->findOrFail($id);
+
+        $notification->delete();
+
+        return response()->json(['message' => 'Notification supprimée'], 200);
+    }
+
     public function markAllAsRead(Request $request)
     {
         Notification::where('user_id', $request->user()?->id)

@@ -60,9 +60,9 @@ class SendTaskDueTodayNotifications extends Command
                     $user->notify(new TaskDueTodayNotification($task));
                 }
 
-                // 2. Push + alerte in-app (enregistrement en base + push FCM/APNs)
+                // 2. Push + SMS + alerte in-app (email déjà envoyé via TaskDueTodayNotification ci-dessus)
                 $title = 'Tâche à effectuer aujourd\'hui';
-                $message = "La tâche « {$task->title} » est prévue pour aujourd'hui.";
+                $message = "La tâche « {$task->title} » est prévue pour aujourd'hui. Consultez l'app Brole.";
                 $data = [
                     'task_id' => (string) $task->id,
                     'task_title' => $task->title,
@@ -76,7 +76,7 @@ class SendTaskDueTodayNotifications extends Command
                     $title,
                     $message,
                     $data,
-                    'push'
+                    'all'
                 );
 
                 $sent++;

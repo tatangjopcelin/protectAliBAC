@@ -9,6 +9,7 @@ use App\Models\Store;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use App\Services\NotificationService;
 
 class CheckWeeklySuperTasks extends Command
 {
@@ -55,7 +56,7 @@ class CheckWeeklySuperTasks extends Command
                 ->where('week_start_date', $currentWeekStart->format('Y-m-d'))
                 ->exists();
 
-            if (!$friteuseExists || !chambreFroideExists) {
+            if (!$friteuseExists || !$chambreFroideExists) {
                 $missing = [];
                 if (!$friteuseExists) $missing[] = 'Friteuse';
                 if (!$chambreFroideExists) $missing[] = 'Chambre froide';
@@ -116,6 +117,24 @@ class CheckWeeklySuperTasks extends Command
                 Mail::raw($message, function ($mail) use ($manager, $subject) {
                     $mail->to($manager->email)->subject($subject);
                 });
+
+                // Push + SMS : message court (email détaillé déjà envoyé ci-dessus)
+                $missingList = implode(', ', $missing);
+                $weekLabel = Carbon::parse($weekStart)->format('d/m/Y');
+                $shortMessage = "Super tâches manquantes ({$missingList}) pour la semaine du {$weekLabel}. Assignez-les dans l'app Brole.";
+                app(NotificationService::class)->sendNotification(
+                    $manager,
+                    'super_task_missing',
+                    'Super tâches manquantes',
+                    $shortMessage,
+                    [
+                        'route' => '/tabs/super-tasks',
+                        'screen' => 'super-tasks',
+                        'week_start' => $weekStart,
+                        'missing' => $missing,
+                    ],
+                    'all'
+                );
 
                 $this->line("  Notification envoyée à: {$manager->email}");
             } catch (\Exception $e) {

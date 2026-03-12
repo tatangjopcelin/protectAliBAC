@@ -7,6 +7,7 @@ use App\Mail\PayrollReportDistributedMail;
 use App\Models\PayrollReportToken;
 use App\Models\User;
 use App\Models\TimeEntry;
+use App\Services\NotificationService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -90,6 +91,21 @@ class PayrollReportController extends Controller
                 $pdfFilename = 'recapitulatif-heures-' . $month . '-' . \Illuminate\Support\Str::slug($employee->name) . '.pdf';
 
                 Mail::send(new PayrollReportDistributedMail($employee, $monthStart, $link, $pdfContent, $pdfFilename));
+
+                // Push + SMS : rapport de paie disponible (email déjà envoyé via Mailable ci-dessus)
+                $monthLabel = $monthStart->locale('fr')->monthName . ' ' . $monthStart->year;
+                app(NotificationService::class)->sendNotification(
+                    $employee,
+                    'payroll_report',
+                    'Rapport de paie',
+                    "Votre rapport de paie {$monthLabel} est disponible. Consultez l'app Brole ou votre email.",
+                    [
+                        'route' => '/payroll-report/' . $token->token,
+                        'screen' => 'payroll-report',
+                        'month' => $month,
+                    ],
+                    'all'
+                );
 
                 $sentCount++;
 

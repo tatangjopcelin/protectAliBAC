@@ -48,3 +48,13 @@ Schedule::command('absences:detect')
 Schedule::command('tasks:notify-due-today')
     ->dailyAt('07:00')
     ->description('Envoie email, push et alerte aux employés pour les tâches dues aujourd\'hui');
+
+// Notifier des tâches en retard (tâches normales) chaque jour à 07h30
+Schedule::command('tasks:notify-overdue')
+    ->dailyAt('07:30')
+    ->description('Envoie une notification aux employés et aux managers pour les tâches en retard');
+
+// Notifier des super tâches en retard chaque jour à 08h30
+Schedule::command('super-tasks:notify-overdue')
+    ->dailyAt('08:30')
+    ->description('Envoie une notification aux employés et aux managers pour les super tâches en retard');

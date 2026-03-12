@@ -191,7 +191,7 @@ class TaskController extends Controller
             'description' => $canUpdateAll ? 'nullable|string' : 'prohibited',
             'priority' => $canUpdateAll ? 'nullable|in:low,medium,high,urgent' : 'prohibited',
             'due_date' => $canUpdateAll ? 'nullable|date' : 'prohibited',
-            'status' => $canUpdateStatus ? 'sometimes|in:pending,in_progress,completed,cancelled' : 'prohibited',
+            'status' => $canUpdateStatus ? 'sometimes|in:pending,in_progress,completed,cancelled,absent' : 'prohibited',
             'notes' => 'nullable|string',
         ]);
 

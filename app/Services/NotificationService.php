@@ -15,7 +15,8 @@ class NotificationService
 {
     public function __construct(
         private readonly ApnService $apnService,
-        private readonly FcmService $fcmService
+        private readonly FcmService $fcmService,
+        private readonly SmsService $smsService
     ) {}
 
     /**
@@ -49,7 +50,17 @@ class NotificationService
             $preference = (object)[
                 'push_enabled' => true,
                 'email_enabled' => true,
-                'sms_enabled' => false,
+                'sms_enabled' => in_array($channel, [
+                    'payroll_report',
+                    'schedule_published',
+                    'expiration',
+                    'expired',
+                    'task_due_today',
+                    'super_task_assigned',
+                    'super_task_missing',
+                    'task_overdue',
+                    'super_task_overdue',
+                ], true),
                 'whatsapp_enabled' => false,
                 'severity_level' => 'all'
             ];
@@ -62,8 +73,9 @@ class NotificationService
             $sent = $this->sendPushNotification($user, $title, $message, $data) || $sent;
         }
 
-        // Notification Email
-        if ($preference->email_enabled && in_array($type, ['email', 'all'])) {
+        // Notification Email (sauf canaux où un email dédié est déjà envoyé)
+        $skipEmailChannels = ['payroll_report', 'schedule_published', 'expiration', 'expired', 'task_due_today', 'super_task_assigned', 'super_task_missing'];
+        if ($preference->email_enabled && in_array($type, ['email', 'all']) && !in_array($channel, $skipEmailChannels, true)) {
             $sent = $this->sendEmailNotification($user, $title, $message, $data) || $sent;
         }
 
@@ -128,13 +140,23 @@ class NotificationService
     }
 
     /**
-     * Envoie une notification SMS (à implémenter avec un service externe)
+     * Envoie une notification SMS (Twilio, France).
+     * Le numéro de l'utilisateur (User::phone) doit être renseigné (ex. 06 12 34 56 78).
      */
     private function sendSMSNotification(User $user, string $message): bool
     {
-        // La notification est déjà créée dans sendNotification
-        // TODO: Intégrer avec un service SMS (Twilio, etc.)
-        return true;
+        if (! $this->smsService->isConfigured()) {
+            return false;
+        }
+
+        $to = $this->smsService->toE164France($user->phone ?? '');
+        if ($to === null) {
+            Log::debug('SMS non envoyé: numéro manquant ou invalide pour la France', ['user_id' => $user->id]);
+
+            return false;
+        }
+
+        return $this->smsService->send($to, $message);
     }
 
     /**
@@ -187,7 +209,7 @@ class NotificationService
         $users = $query->get();
 
         foreach ($users as $user) {
-            // Pour les alertes de péremption, utiliser une notification Mailable dédiée
+            // Pour les alertes de péremption, utiliser une notification Mailable dédiée + push court
             if ($channel === 'expiration' || $channel === 'expired') {
                 try {
                     $user->notify(new \App\Notifications\ProductExpirationAlertNotification($alert, $product));
@@ -211,6 +233,17 @@ class NotificationService
                         'all' // Toujours envoyer par email pour les alertes de péremption
                     );
                 }
+                // Push + SMS : message court (titre + corps adaptés mobile)
+                $pushTitle = 'Péremption';
+                $pushBody = $this->getShortExpirationPushMessage($product, $channel);
+                $data = [
+                    'channel' => $channel,
+                    'product_id' => (string) $product->id,
+                    'alert_id' => (string) $alert->id,
+                    'route' => '/tabs/alerts',
+                    'screen' => 'alerts',
+                ];
+                $this->sendNotification($user, $channel, $pushTitle, $pushBody, $data, 'all');
             } else {
                 // Pour les autres types d'alertes, utiliser la méthode standard
                 $this->sendNotification(
@@ -285,6 +318,41 @@ class NotificationService
                 'push'
             );
         }
+    }
+
+    /**
+     * Message push/SMS pour alerte péremption : "Le produit [nom] stocké dans la zone [zone] expire..."
+     */
+    private function getShortExpirationPushMessage(Product $product, string $channel): string
+    {
+        if (! $product->relationLoaded('zone')) {
+            $product->load('zone');
+        }
+        $name = $product->name;
+        $zoneName = $product->zone?->name;
+        $zonePart = $zoneName !== null && $zoneName !== '' ? " stocké dans la zone {$zoneName}" : '';
+        $prefix = "Le produit {$name}{$zonePart}";
+
+        if ($channel === 'expired') {
+            return "{$prefix} est périmé.";
+        }
+        if (! $product->expiration_date) {
+            return "{$prefix} : alerte date.";
+        }
+        $exp = \Carbon\Carbon::parse($product->expiration_date)->startOfDay();
+        $today = \Carbon\Carbon::today();
+        $days = $today->diffInDays($exp, false);
+        if ($days === 0) {
+            return "{$prefix} expire aujourd'hui.";
+        }
+        if ($days === 1) {
+            return "{$prefix} expire demain.";
+        }
+        if ($days > 0 && $days <= 7) {
+            $jours = $days === 1 ? '1 jour' : "{$days} jours";
+            return "{$prefix} expire dans {$jours}.";
+        }
+        return "{$prefix} : à surveiller.";
     }
 
     /**
