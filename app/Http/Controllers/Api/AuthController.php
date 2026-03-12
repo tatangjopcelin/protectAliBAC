@@ -97,6 +97,7 @@ class AuthController extends Controller
             $request->merge([
                 'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
                 'email' => is_string($request->input('email')) ? trim($request->input('email')) : $request->input('email'),
+                'phone' => is_string($request->input('phone')) ? trim($request->input('phone')) : $request->input('phone'),
                 'establishment_code' => $request->input('registration_type') === 'join_store' && $request->has('establishment_code')
                     ? trim((string) $request->input('establishment_code'))
                     : $request->input('establishment_code'),
@@ -109,6 +110,7 @@ class AuthController extends Controller
                 // Champs utilisateur
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255',
+                'phone' => 'nullable|string|max:20',
                 'password' => 'required|string|min:8|confirmed',
                 'role' => 'nullable|string|in:admin,chef,cook,storekeeper,accountant,butcher,server,director,machine',
                 'zone_id' => 'nullable|integer|exists:zones,id',
@@ -160,6 +162,7 @@ class AuthController extends Controller
             $pendingRegistration = PendingRegistration::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
+                'phone' => $validated['phone'] ?? null,
                 'password' => $validated['password'],
                 'role' => $role,
                 'zone_id' => $validated['zone_id'] ?? null,
@@ -290,6 +293,7 @@ class AuthController extends Controller
                     $user = User::create([
                         'name' => $pendingRegistration->name,
                         'email' => $pendingRegistration->email,
+                        'phone' => $pendingRegistration->phone,
                         'password' => $pendingRegistration->password,
                         'role' => 'admin',
                         'store_id' => $store->id,
@@ -321,6 +325,7 @@ class AuthController extends Controller
                     $user = User::create([
                         'name' => $pendingRegistration->name,
                         'email' => $pendingRegistration->email,
+                        'phone' => $pendingRegistration->phone,
                         'password' => $pendingRegistration->password,
                         'role' => $pendingRegistration->role ?? 'cook',
                         'store_id' => $store->id,

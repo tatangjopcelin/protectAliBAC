@@ -55,7 +55,7 @@ class UserController extends Controller
         // Vérifier si la colonne max_overtime_hours existe
         $hasOvertimeColumn = \Schema::hasColumn('users', 'max_overtime_hours');
         
-        $selectFields = ['id', 'name', 'email', 'role', 'zone_id', 'created_at'];
+        $selectFields = ['id', 'name', 'email', 'phone', 'role', 'zone_id', 'created_at'];
         if ($hasOvertimeColumn) {
             $selectFields[] = 'max_overtime_hours';
         }
@@ -99,6 +99,7 @@ class UserController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'phone' => $user->phone,
             'role' => $user->role,
             'zone_id' => $user->zone_id,
             'max_overtime_hours' => $user->max_overtime_hours,
@@ -126,6 +127,7 @@ class UserController extends Controller
         $request->merge([
             'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
             'email' => is_string($request->input('email')) ? trim($request->input('email')) : $request->input('email'),
+            'phone' => is_string($request->input('phone')) ? trim($request->input('phone')) : $request->input('phone'),
             'zone_id' => $this->normalizeZoneIdForStore($request->input('zone_id')),
             'contract_hours_per_week' => $this->normalizeContractHours($request->input('contract_hours_per_week')),
         ]);
@@ -134,6 +136,7 @@ class UserController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'nullable|string|max:20',
             'password' => 'required|string|min:8',
             'role' => [
                 'required',
@@ -199,6 +202,7 @@ class UserController extends Controller
         $user = User::create([
             'name' => $validated['name'],
             'email' => $validated['email'],
+            'phone' => $validated['phone'] ?? null,
             'password' => Hash::make($validated['password']),
             'role' => $validated['role'],
             'store_id' => $request->user()->store_id,
@@ -220,6 +224,7 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'phone' => $user->phone,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'max_overtime_hours' => $user->max_overtime_hours,
@@ -258,6 +263,7 @@ class UserController extends Controller
                 'max:255',
                 Rule::unique('users')->ignore($id),
             ],
+            'phone' => 'nullable|string|max:20',
             'password' => 'sometimes|string|min:8',
             'role' => [
                 'sometimes',
@@ -295,6 +301,7 @@ class UserController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'phone' => $user->phone,
                 'role' => $user->role,
                 'zone_id' => $user->zone_id,
                 'max_overtime_hours' => $user->max_overtime_hours,

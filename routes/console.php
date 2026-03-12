@@ -49,6 +49,11 @@ Schedule::command('tasks:notify-due-today')
     ->dailyAt('07:00')
     ->description('Envoie email, push et alerte aux employés pour les tâches dues aujourd\'hui');
 
+// Rappel super tâches à effectuer aujourd'hui (selon day_of_week) chaque jour à 7h00
+Schedule::command('super-tasks:notify-due-today')
+    ->dailyAt('07:00')
+    ->description('Rappelle aux employés qu\'ils ont une super tâche à faire aujourd\'hui');
+
 // Notifier des tâches en retard (tâches normales) chaque jour à 07h30
 Schedule::command('tasks:notify-overdue')
     ->dailyAt('07:30')

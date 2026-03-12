@@ -14,6 +14,7 @@ class SuperTask extends Model
         'assigned_to',
         'assigned_by',
         'week_start_date',
+        'day_of_week', // 1=lundi … 7=dimanche, jour à exécuter (affiché à l'employé)
         'status',
         'started_at',
         'completed_at',

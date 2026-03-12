@@ -56,6 +56,7 @@ class NotificationService
                     'expiration',
                     'expired',
                     'task_due_today',
+                    'super_task_due_today',
                     'super_task_assigned',
                     'super_task_missing',
                     'task_overdue',

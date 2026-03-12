@@ -35,6 +35,16 @@ class SuperTaskController extends Controller
     }
 
     /**
+     * Retourne une super tâche en tableau avec week_start_date en Y-m-d (évite décalage -1 jour en front)
+     */
+    private function superTaskToArray(SuperTask $superTask): array
+    {
+        $arr = $superTask->toArray();
+        $arr['week_start_date'] = Carbon::parse($superTask->week_start_date)->format('Y-m-d');
+        return $arr;
+    }
+
+    /**
      * Récupère toutes les super tâches de l'établissement
      */
     public function index(Request $request)
@@ -73,10 +83,9 @@ class SuperTaskController extends Controller
             ->orderBy('type', 'asc')
             ->get();
 
-        // Formater week_start_date au format Y-m-d pour éviter les problèmes de timezone
         $superTasks = $this->formatSuperTasks($superTasks);
 
-        return response()->json($superTasks);
+        return response()->json($superTasks->map(fn ($t) => $this->superTaskToArray($t)));
     }
 
     /**
@@ -96,10 +105,9 @@ class SuperTaskController extends Controller
             ->orderBy('week_start_date', 'asc')
             ->get();
 
-        // Formater week_start_date au format Y-m-d
         $superTasks = $this->formatSuperTasks($superTasks);
 
-        return response()->json($superTasks);
+        return response()->json($superTasks->map(fn ($t) => $this->superTaskToArray($t)));
     }
 
     /**
@@ -139,6 +147,7 @@ class SuperTaskController extends Controller
             'type' => 'required|in:friteuse,chambre_froide',
             'assigned_to' => 'required|exists:users,id',
             'week_start_date' => 'required|date',
+            'day_of_week' => 'nullable|integer|min:1|max:7',
         ]);
 
         // Normaliser au lundi de la semaine sélectionnée (permettre plusieurs semaines)
@@ -178,6 +187,7 @@ class SuperTaskController extends Controller
             'assigned_to' => $validated['assigned_to'],
             'assigned_by' => $user->id,
             'week_start_date' => $validated['week_start_date'],
+            'day_of_week' => isset($validated['day_of_week']) ? (int) $validated['day_of_week'] : null,
             'status' => 'pending',
         ]);
 
@@ -185,10 +195,9 @@ class SuperTaskController extends Controller
         $superTask->load(['assignedTo', 'assignedBy', 'store']);
         $this->notifySuperTaskAssigned($superTask, $assignedUser, $user);
 
-        // Formater week_start_date
         $superTask = $this->formatSuperTask($superTask);
 
-        return response()->json($superTask, 201);
+        return response()->json($this->superTaskToArray($superTask), 201);
     }
 
     /**
@@ -215,6 +224,7 @@ class SuperTaskController extends Controller
         $validated = $request->validate([
             'assigned_to' => $canUpdateAll ? 'sometimes|exists:users,id' : 'prohibited',
             'week_start_date' => $canUpdateAll ? 'sometimes|date' : 'prohibited',
+            'day_of_week' => $canUpdateAll ? 'nullable|integer|min:1|max:7' : 'prohibited',
             'status' => $canUpdateStatus ? 'sometimes|in:pending,in_progress,completed,absent' : 'prohibited',
             'oil_changed' => $superTask->type === 'friteuse' ? 'nullable|boolean' : 'prohibited',
             'cleaned' => $superTask->type === 'friteuse' ? 'nullable|boolean' : 'prohibited',
@@ -319,10 +329,9 @@ class SuperTaskController extends Controller
         }
 
         $superTask->load(['assignedTo', 'assignedBy', 'store']);
-        // Formater week_start_date
         $superTask = $this->formatSuperTask($superTask);
 
-        return response()->json($superTask);
+        return response()->json($this->superTaskToArray($superTask));
     }
 
     /**
@@ -373,11 +382,12 @@ class SuperTaskController extends Controller
                     'assigned_to' => $assignedUser->id,
                     'assigned_by' => $user->id,
                     'week_start_date' => $weekStart,
+                    'day_of_week' => (int) $validated['day_of_week'],
                     'status' => 'pending',
                 ]);
                 $superTask->load(['assignedTo', 'assignedBy', 'store']);
                 $this->notifySuperTaskAssigned($superTask, $assignedUser, $user);
-                $created[] = $this->formatSuperTask($superTask);
+                $created[] = $this->superTaskToArray($this->formatSuperTask($superTask));
             } else {
                 $skipped++;
             }
@@ -443,11 +453,9 @@ class SuperTaskController extends Controller
         }
 
         $superTask = $superTask->with(['assignedTo', 'assignedBy', 'store'])->firstOrFail();
-
-        // Formater week_start_date
         $superTask = $this->formatSuperTask($superTask);
 
-        return response()->json($superTask);
+        return response()->json($this->superTaskToArray($superTask));
     }
 
     /**
