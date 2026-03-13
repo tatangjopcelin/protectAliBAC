@@ -23,8 +23,9 @@ class SupportTicketController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        if (!$user || !$user->store_id) {
-            return response()->json(['message' => 'Vous devez appartenir à un établissement pour créer un ticket'], 403);
+        // Seul l'admin de l'établissement peut créer un ticket pour contacter le super admin.
+        if (!$user || !$user->store_id || $user->role !== 'admin') {
+            return response()->json(['message' => 'Seul l\'admin de l\'établissement peut créer un ticket de support'], 403);
         }
 
         $validated = $request->validate([
@@ -79,6 +80,41 @@ class SupportTicketController extends Controller
         $tickets = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json($tickets);
+    }
+
+    /**
+     * Nombre de tickets ayant une réponse du super admin non encore "vue" par l'admin (store_seen_at < updated_at ou null).
+     * Utilisé pour le badge "Contact" sur le dashboard (admin uniquement).
+     */
+    public function repliesCount(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->store_id || $user->role !== 'admin') {
+            return response()->json(['count' => 0]);
+        }
+        $count = SupportTicket::where('store_id', $user->store_id)
+            ->whereNotNull('admin_note')
+            ->whereRaw('TRIM(admin_note) != ?', [''])
+            ->where(function ($q) {
+                $q->whereNull('store_seen_at')
+                    ->orWhereColumn('store_seen_at', '<', 'updated_at');
+            })
+            ->count();
+        return response()->json(['count' => $count]);
+    }
+
+    /**
+     * Marquer les réponses comme vues par l'admin (appelé à l'entrée sur la page Contact).
+     * Remet le compteur badge à 0 une fois l'admin ressorti et le dashboard rechargé.
+     */
+    public function markRepliesSeen(Request $request)
+    {
+        $user = $request->user();
+        if (!$user || !$user->store_id || $user->role !== 'admin') {
+            return response()->json(['message' => 'Non autorisé'], 403);
+        }
+        SupportTicket::where('store_id', $user->store_id)->update(['store_seen_at' => now()]);
+        return response()->json(['message' => 'ok']);
     }
 
     /**
@@ -169,12 +205,22 @@ class SupportTicketController extends Controller
         }
     }
 
-    /** Notifie l'auteur du ticket que l'équipe technique a répondu. */
+    /** Notifie l'auteur du ticket que l'équipe technique a répondu. Uniquement si l'auteur est admin ou super_admin. */
     private function notifyUserTicketReply(SupportTicket $ticket): void
     {
-        $ticket->loadMissing('user', 'store');
-        $author = $ticket->user;
+        $author = User::find($ticket->user_id);
         if (!$author) {
+            return;
+        }
+
+        // Rôle rechargé depuis la BDD : les employés (cuisinier, serveur, etc.) ne reçoivent aucune notification.
+        if (!in_array($author->role, ['admin', 'super_admin'], true)) {
+            Log::info('Support: notification de réponse non envoyée (auteur employé)', [
+                'ticket_id' => $ticket->id,
+                'user_id' => $author->id,
+                'email' => $author->email,
+                'role' => $author->role,
+            ]);
             return;
         }
 

@@ -243,7 +243,9 @@ class SuperAdminController extends Controller
             'store_id' => 'nullable|integer|exists:stores,id',
             'subject' => 'required|string|max:255',
             'body' => 'required|string|max:10000',
+            'notify_all_employees' => 'sometimes|boolean',
         ]);
+        $notifyAllEmployees = !empty($validated['notify_all_employees']);
 
         $sentCount = 0;
         $errors = [];
@@ -253,51 +255,43 @@ class SuperAdminController extends Controller
                 return response()->json(['message' => 'store_id requis pour un envoi individuel'], 422);
             }
 
-            $store = Store::with(['users' => function ($q) {
-                $q->where('role', 'admin');
-            }])->find($validated['store_id']);
+            $store = $notifyAllEmployees
+                ? Store::with('users')->find($validated['store_id'])
+                : Store::with(['users' => function ($q) {
+                    $q->where('role', 'admin');
+                }])->find($validated['store_id']);
 
             if (!$store) {
                 return response()->json(['message' => 'Établissement introuvable'], 404);
             }
 
-            $admin = $store->users->first();
-            if (!$admin || !$admin->email) {
-                return response()->json(['message' => 'Aucun admin avec email pour cet établissement'], 422);
-            }
-            if (!in_array($admin->role, ['admin', 'super_admin'], true)) {
-                return response()->json(['message' => 'Utilisateur de l\'établissement sans rôle admin'], 422);
-            }
-
-            try {
-                Mail::to($admin->email)->send(new SuperAdminBroadcast(
-                    $validated['subject'],
-                    $validated['body'],
-                    $store->name,
-                    $admin->name
-                ));
-                $sentCount = 1;
-                $this->notifyAdminBroadcastReceived($admin, $validated['subject']);
-            } catch (\Throwable $e) {
-                report($e);
-                return response()->json(['message' => 'Erreur lors de l\'envoi de l\'email: ' . $e->getMessage()], 500);
-            }
-        } else {
-            $stores = Store::with(['users' => function ($q) {
-                $q->where('role', 'admin');
-            }])
-                ->where('is_active', true)
-                ->get();
-
-            foreach ($stores as $store) {
+            if ($notifyAllEmployees) {
+                $allUsers = $store->users;
+                if ($allUsers->isEmpty()) {
+                    return response()->json(['message' => 'Aucun utilisateur dans cet établissement'], 422);
+                }
+                try {
+                    foreach ($allUsers as $recipient) {
+                        if (!empty($recipient->email)) {
+                            Mail::to($recipient->email)->send(new SuperAdminBroadcast(
+                                $validated['subject'],
+                                $validated['body'],
+                                $store->name,
+                                $recipient->name
+                            ));
+                        }
+                        $this->notifyBroadcastReceived($recipient, $validated['subject'], true);
+                    }
+                    $sentCount = $allUsers->count();
+                } catch (\Throwable $e) {
+                    report($e);
+                    return response()->json(['message' => 'Erreur lors de l\'envoi: ' . $e->getMessage()], 500);
+                }
+            } else {
                 $admin = $store->users->first();
                 if (!$admin || !$admin->email) {
-                    continue;
+                    return response()->json(['message' => 'Aucun admin avec email pour cet établissement'], 422);
                 }
-                if (!in_array($admin->role, ['admin', 'super_admin'], true)) {
-                    continue;
-                }
-
                 try {
                     Mail::to($admin->email)->send(new SuperAdminBroadcast(
                         $validated['subject'],
@@ -305,8 +299,44 @@ class SuperAdminController extends Controller
                         $store->name,
                         $admin->name
                     ));
-                    $sentCount++;
-                    $this->notifyAdminBroadcastReceived($admin, $validated['subject']);
+                    $sentCount = 1;
+                    $this->notifyBroadcastReceived($admin, $validated['subject'], false);
+                } catch (\Throwable $e) {
+                    report($e);
+                    return response()->json(['message' => 'Erreur lors de l\'envoi de l\'email: ' . $e->getMessage()], 500);
+                }
+            }
+        } else {
+            $stores = Store::with('users')->where('is_active', true)->get();
+            $notifiedUserIds = [];
+
+            foreach ($stores as $store) {
+                $recipients = $notifyAllEmployees
+                    ? $store->users
+                    : $store->users->where('role', 'admin');
+
+                if ($recipients->isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    foreach ($recipients as $recipient) {
+                        if (isset($notifiedUserIds[$recipient->id])) {
+                            continue;
+                        }
+                        $notifiedUserIds[$recipient->id] = true;
+
+                        if (!empty($recipient->email)) {
+                            Mail::to($recipient->email)->send(new SuperAdminBroadcast(
+                                $validated['subject'],
+                                $validated['body'],
+                                $store->name,
+                                $recipient->name
+                            ));
+                        }
+                        $this->notifyBroadcastReceived($recipient, $validated['subject'], $notifyAllEmployees);
+                        $sentCount++;
+                    }
                 } catch (\Throwable $e) {
                     report($e);
                     $errors[] = $store->name;
@@ -330,41 +360,34 @@ class SuperAdminController extends Controller
     }
 
     /**
-     * Notifie un admin par SMS + push qu'il a reçu un message de l'équipe Brole (email broadcast).
-     * Seuls les utilisateurs avec rôle admin ou super_admin reçoivent la notification push/SMS.
+     * Notifie un utilisateur qu'il a reçu un message de l'équipe Brole (email broadcast).
+     * @param bool $allEmployees si true, canal super_admin_broadcast_all (push pour tous) ; sinon admin uniquement.
      */
-    private function notifyAdminBroadcastReceived(User $admin, string $subject): void
+    private function notifyBroadcastReceived(User $user, string $subject, bool $allEmployees): void
     {
-        // Recharger le rôle depuis la BDD pour éviter tout doute (cache, eager load partiel)
-        $user = User::find($admin->id);
-        if (!$user || !in_array($user->role, ['admin', 'super_admin'], true)) {
-            Log::info('Broadcast super admin : notification non envoyée (utilisateur sans rôle admin)', [
-                'user_id' => $admin->id,
-                'role' => $user?->role ?? null,
-            ]);
-            return;
-        }
-
         $subjectShort = \Illuminate\Support\Str::limit($subject, 40);
         $title = 'Message de l\'équipe Brole';
         $message = "L'équipe Brole vous a envoyé un message : « {$subjectShort} ». Consultez votre email ou l'app Brole.";
         $data = [
             'screen' => 'dashboard',
             'route' => '/tabs/dashboard',
+            'tag' => 'brole_broadcast',
         ];
+        $channel = $allEmployees ? 'super_admin_broadcast_all' : 'super_admin_broadcast';
 
         try {
             $this->notificationService->sendNotification(
                 $user,
-                'super_admin_broadcast',
+                $channel,
                 $title,
                 $message,
                 $data,
                 'all'
             );
         } catch (\Throwable $e) {
-            Log::warning('Notification broadcast admin', [
-                'admin_id' => $user->id,
+            Log::warning('Notification broadcast', [
+                'user_id' => $user->id,
+                'channel' => $channel,
                 'error' => $e->getMessage(),
             ]);
         }

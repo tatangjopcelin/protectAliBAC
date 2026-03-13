@@ -24,11 +24,12 @@ class NotificationService
      */
     public function sendNotification(User $user, string $channel, string $title, string $message, array $data = [], string $type = 'push'): bool
     {
-        // Canal réservé aux admins : ne rien envoyer ni créer pour un non-admin (ex. cuisinier, directeur)
-        if ($channel === 'super_admin_broadcast' && !in_array($user->role, ['admin', 'super_admin'], true)) {
-            Log::info('Notification super_admin_broadcast ignorée pour un non-admin', [
+        // Réponses support-tickets : réservé aux admin/super_admin, aucun envoi aux employés.
+        if ($channel === 'support_ticket_reply' && !in_array($user->role, ['admin', 'super_admin'], true)) {
+            Log::info('Notification support_ticket_reply bloquée (destinataire non admin)', [
                 'user_id' => $user->id,
-                'role' => $user->role,
+                'email' => $user->email ?? null,
+                'role' => $user->role ?? null,
             ]);
             return false;
         }
@@ -73,6 +74,7 @@ class NotificationService
                     'support_ticket_new',
                     'support_ticket_reply',
                     'super_admin_broadcast',
+                    'super_admin_broadcast_all',
                 ], true),
                 'whatsapp_enabled' => false,
                 'severity_level' => 'all'
@@ -81,8 +83,13 @@ class NotificationService
 
         $sent = false;
 
-        // Notification Push : uniquement pour admin et super_admin (les employés ne reçoivent pas de push)
-        if (in_array($user->role, ['admin', 'super_admin'], true) && $preference->push_enabled && in_array($type, ['push', 'all'])) {
+        // Notification Push : pas de push pour support-tickets ni pour broadcast "admins uniquement" ; push pour "tous employés"
+        $noPushChannels = ['support_ticket_new', 'support_ticket_reply', 'super_admin_broadcast'];
+        $pushForAllRoles = $channel === 'super_admin_broadcast_all';
+        $maySendPush = $preference->push_enabled && in_array($type, ['push', 'all'])
+            && !in_array($channel, $noPushChannels, true)
+            && ($pushForAllRoles || in_array($user->role, ['admin', 'super_admin'], true));
+        if ($maySendPush) {
             $sent = $this->sendPushNotification($user, $title, $message, $data) || $sent;
         }
 

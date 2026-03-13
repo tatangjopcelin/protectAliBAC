@@ -140,6 +140,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Tickets de support (contact super admin)
     Route::post('/support-tickets', [SupportTicketController::class, 'store']); // côté établissement
     Route::get('/support-tickets/unread-count', [SupportTicketController::class, 'unreadCount']); // super admin : nombre de messages non lus
+    Route::get('/support-tickets/replies-count', [SupportTicketController::class, 'repliesCount']); // admin : nombre de réponses non vues
+    Route::post('/support-tickets/mark-replies-seen', [SupportTicketController::class, 'markRepliesSeen']); // admin : marquer les réponses comme vues (à l'entrée sur Contact)
     Route::post('/support-tickets/mark-seen', [SupportTicketController::class, 'markSeen']); // super admin : marquer tout comme lu
     Route::get('/support-tickets', [SupportTicketController::class, 'index']); // liste (super admin = tous, autres = store courant)
     Route::put('/support-tickets/{id}', [SupportTicketController::class, 'update']); // mise à jour (super admin)

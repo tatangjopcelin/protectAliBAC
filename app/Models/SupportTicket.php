@@ -15,10 +15,12 @@ class SupportTicket extends Model
         'status',
         'admin_note',
         'super_admin_seen_at',
+        'store_seen_at',
     ];
 
     protected $casts = [
         'super_admin_seen_at' => 'datetime',
+        'store_seen_at' => 'datetime',
     ];
 
     public function store(): BelongsTo

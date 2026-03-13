@@ -67,6 +67,14 @@ class FcmService
 
         if (! empty($data)) {
             $message['data'] = array_map(fn ($v) => is_scalar($v) ? (string) $v : json_encode($v), $data);
+            $tag = $data['tag'] ?? null;
+            if ($tag !== null && $tag !== '') {
+                $message['android'] = [
+                    'notification' => [
+                        'tag' => is_scalar($tag) ? (string) $tag : 'brole_broadcast',
+                    ],
+                ];
+            }
         }
 
         $body = ['message' => $message];
