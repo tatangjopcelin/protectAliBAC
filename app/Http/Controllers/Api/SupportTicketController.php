@@ -4,13 +4,21 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\SupportTicket;
+use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class SupportTicketController extends Controller
 {
+    public function __construct(
+        private readonly NotificationService $notificationService
+    ) {}
+
     /**
      * Créer un ticket de support (côté établissement).
      * Tout utilisateur lié à un store peut créer un ticket.
+     * Notifie le(s) super admin par SMS + push.
      */
     public function store(Request $request)
     {
@@ -32,7 +40,11 @@ class SupportTicketController extends Controller
             'status' => 'open',
         ]);
 
-        return response()->json($ticket->load('store:id,name,establishment_code', 'user:id,name,email'), 201);
+        $ticket->load('store:id,name,establishment_code', 'user:id,name,email');
+
+        $this->notifySuperAdminsNewTicket($ticket, $user);
+
+        return response()->json($ticket, 201);
     }
 
     /**
@@ -71,6 +83,7 @@ class SupportTicketController extends Controller
 
     /**
      * Mettre à jour un ticket (super admin).
+     * Si admin_note est renseigné, notifie l'auteur du ticket par SMS + push.
      */
     public function update(Request $request, int $id)
     {
@@ -87,6 +100,11 @@ class SupportTicketController extends Controller
         $ticket = SupportTicket::findOrFail($id);
         $ticket->fill($validated);
         $ticket->save();
+
+        $newAdminNote = trim((string) ($validated['admin_note'] ?? ''));
+        if ($newAdminNote !== '') {
+            $this->notifyUserTicketReply($ticket);
+        }
 
         return response()->json($ticket->fresh()->load('store:id,name,establishment_code', 'user:id,name,email'));
     }
@@ -115,6 +133,75 @@ class SupportTicketController extends Controller
         }
         SupportTicket::whereNull('super_admin_seen_at')->update(['super_admin_seen_at' => now()]);
         return response()->json(['message' => 'ok']);
+    }
+
+    /** Notifie tous les super admins qu'un nouvel établissement a envoyé un message. */
+    private function notifySuperAdminsNewTicket(SupportTicket $ticket, User $author): void
+    {
+        $storeName = $ticket->store?->name ?? 'Un établissement';
+        $subject = \Illuminate\Support\Str::limit($ticket->subject, 50);
+        $title = 'Nouveau message de support';
+        $message = "{$storeName} a envoyé un message : « {$subject } ». Consultez l'app Brole dans Messages.";
+        $data = [
+            'support_ticket_id' => (string) $ticket->id,
+            'screen' => 'support-tickets',
+            'route' => '/tabs/support-tickets',
+        ];
+
+        $superAdmins = User::where('role', 'super_admin')->get();
+        foreach ($superAdmins as $superAdmin) {
+            try {
+                $this->notificationService->sendNotification(
+                    $superAdmin,
+                    'support_ticket_new',
+                    $title,
+                    $message,
+                    $data,
+                    'all'
+                );
+            } catch (\Throwable $e) {
+                Log::error('Erreur notification support (super admin)', [
+                    'ticket_id' => $ticket->id,
+                    'user_id' => $superAdmin->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /** Notifie l'auteur du ticket que l'équipe technique a répondu. */
+    private function notifyUserTicketReply(SupportTicket $ticket): void
+    {
+        $ticket->loadMissing('user', 'store');
+        $author = $ticket->user;
+        if (!$author) {
+            return;
+        }
+
+        $title = 'Réponse de l\'équipe technique';
+        $message = "L'équipe technique a répondu à votre demande « " . \Illuminate\Support\Str::limit($ticket->subject, 40) . " ». Consultez l'app Brole dans Contact.";
+        $data = [
+            'support_ticket_id' => (string) $ticket->id,
+            'screen' => 'support-contact',
+            'route' => '/tabs/support-contact',
+        ];
+
+        try {
+            $this->notificationService->sendNotification(
+                $author,
+                'support_ticket_reply',
+                $title,
+                $message,
+                $data,
+                'all'
+            );
+        } catch (\Throwable $e) {
+            Log::error('Erreur notification support (réponse)', [
+                'ticket_id' => $ticket->id,
+                'user_id' => $author->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 

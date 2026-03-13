@@ -133,6 +133,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // Super admin : vue globale des établissements et tickets de support
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/super-admin/stores', [SuperAdminController::class, 'storesOverview']);
+    Route::patch('/super-admin/stores/{id}/free-access', [SuperAdminController::class, 'setFreeAccess']);
     Route::get('/super-admin/subscription-balance', [SuperAdminController::class, 'subscriptionBalance']);
     Route::get('/super-admin/stores-for-email', [SuperAdminController::class, 'storesForEmail']);
     Route::post('/super-admin/send-email', [SuperAdminController::class, 'sendEmail']);

@@ -6,14 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Models\Store;
 use App\Models\SubscriptionPlan;
 use App\Models\User;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\SuperAdminBroadcast;
 use Stripe\Stripe;
 
 class SuperAdminController extends Controller
 {
+    public function __construct(
+        private readonly NotificationService $notificationService
+    ) {}
+
     /**
      * Liste des établissements avec plan d'abonnement et nombre d'utilisateurs.
      * Réservé au rôle super_admin, n'affecte pas la logique existante.
@@ -54,8 +60,17 @@ class SuperAdminController extends Controller
                     'ends_at' => optional($sub->ends_at)->toIso8601String(),
                 ];
             } else {
-                // Pas d'abonnement Stripe : période d'essai ou aucun plan
-                if ($store->trial_ends_at && $store->trial_ends_at->isFuture()) {
+                // Pas d'abonnement Stripe : accès libre (super admin), essai, ou aucun
+                if ($store->free_access_granted_at) {
+                    $subscription = [
+                        'type' => 'free_access',
+                        'plan_name' => 'Accès libre',
+                        'plan_slug' => 'gratuit',
+                        'status' => 'free_access',
+                        'trial_ends_at' => null,
+                        'ends_at' => null,
+                    ];
+                } elseif ($store->trial_ends_at && $store->trial_ends_at->isFuture()) {
                     $plan = SubscriptionPlan::where('slug', 'gratuit')->first();
                     $subscription = [
                         'type' => 'trial',
@@ -84,6 +99,7 @@ class SuperAdminController extends Controller
                 'is_active' => $store->is_active,
                 'users_count' => $store->users_count,
                 'subscription' => $subscription,
+                'free_access_granted_at' => $store->free_access_granted_at?->toIso8601String(),
                 'created_at' => optional($store->created_at)->toIso8601String(),
                 'trial_ends_at' => optional($store->trial_ends_at)->toIso8601String(),
                 'creator' => $store->creator,
@@ -91,6 +107,33 @@ class SuperAdminController extends Controller
         });
 
         return response()->json($result->values());
+    }
+
+    /**
+     * Activer ou arrêter l'accès libre pour un établissement (super admin).
+     * Body: { "granted": true|false }
+     */
+    public function setFreeAccess(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user || $user->role !== 'super_admin') {
+            return response()->json(['message' => 'Accès réservé au super administrateur'], 403);
+        }
+
+        $validated = $request->validate([
+            'granted' => 'required|boolean',
+        ]);
+
+        $store = Store::findOrFail($id);
+        $store->free_access_granted_at = $validated['granted'] ? now() : null;
+        $store->save();
+
+        return response()->json([
+            'message' => $validated['granted']
+                ? 'Accès libre activé pour cet établissement.'
+                : 'Accès libre arrêté. L\'établissement doit avoir un abonnement actif pour continuer.',
+            'free_access_granted_at' => $store->free_access_granted_at?->toIso8601String(),
+        ]);
     }
 
     /**
@@ -222,6 +265,9 @@ class SuperAdminController extends Controller
             if (!$admin || !$admin->email) {
                 return response()->json(['message' => 'Aucun admin avec email pour cet établissement'], 422);
             }
+            if (!in_array($admin->role, ['admin', 'super_admin'], true)) {
+                return response()->json(['message' => 'Utilisateur de l\'établissement sans rôle admin'], 422);
+            }
 
             try {
                 Mail::to($admin->email)->send(new SuperAdminBroadcast(
@@ -231,6 +277,7 @@ class SuperAdminController extends Controller
                     $admin->name
                 ));
                 $sentCount = 1;
+                $this->notifyAdminBroadcastReceived($admin, $validated['subject']);
             } catch (\Throwable $e) {
                 report($e);
                 return response()->json(['message' => 'Erreur lors de l\'envoi de l\'email: ' . $e->getMessage()], 500);
@@ -247,6 +294,9 @@ class SuperAdminController extends Controller
                 if (!$admin || !$admin->email) {
                     continue;
                 }
+                if (!in_array($admin->role, ['admin', 'super_admin'], true)) {
+                    continue;
+                }
 
                 try {
                     Mail::to($admin->email)->send(new SuperAdminBroadcast(
@@ -256,6 +306,7 @@ class SuperAdminController extends Controller
                         $admin->name
                     ));
                     $sentCount++;
+                    $this->notifyAdminBroadcastReceived($admin, $validated['subject']);
                 } catch (\Throwable $e) {
                     report($e);
                     $errors[] = $store->name;
@@ -276,6 +327,47 @@ class SuperAdminController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * Notifie un admin par SMS + push qu'il a reçu un message de l'équipe Brole (email broadcast).
+     * Seuls les utilisateurs avec rôle admin ou super_admin reçoivent la notification push/SMS.
+     */
+    private function notifyAdminBroadcastReceived(User $admin, string $subject): void
+    {
+        // Recharger le rôle depuis la BDD pour éviter tout doute (cache, eager load partiel)
+        $user = User::find($admin->id);
+        if (!$user || !in_array($user->role, ['admin', 'super_admin'], true)) {
+            Log::info('Broadcast super admin : notification non envoyée (utilisateur sans rôle admin)', [
+                'user_id' => $admin->id,
+                'role' => $user?->role ?? null,
+            ]);
+            return;
+        }
+
+        $subjectShort = \Illuminate\Support\Str::limit($subject, 40);
+        $title = 'Message de l\'équipe Brole';
+        $message = "L'équipe Brole vous a envoyé un message : « {$subjectShort} ». Consultez votre email ou l'app Brole.";
+        $data = [
+            'screen' => 'dashboard',
+            'route' => '/tabs/dashboard',
+        ];
+
+        try {
+            $this->notificationService->sendNotification(
+                $user,
+                'super_admin_broadcast',
+                $title,
+                $message,
+                $data,
+                'all'
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Notification broadcast admin', [
+                'admin_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
 

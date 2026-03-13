@@ -17,12 +17,14 @@ class Store extends Model
         'establishment_code',
         'created_by',
         'trial_ends_at',
+        'free_access_granted_at',
         'clock_in_verification_method',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
         'trial_ends_at' => 'datetime',
+        'free_access_granted_at' => 'datetime',
     ];
 
     /**

@@ -24,6 +24,15 @@ class NotificationService
      */
     public function sendNotification(User $user, string $channel, string $title, string $message, array $data = [], string $type = 'push'): bool
     {
+        // Canal réservé aux admins : ne rien envoyer ni créer pour un non-admin (ex. cuisinier, directeur)
+        if ($channel === 'super_admin_broadcast' && !in_array($user->role, ['admin', 'super_admin'], true)) {
+            Log::info('Notification super_admin_broadcast ignorée pour un non-admin', [
+                'user_id' => $user->id,
+                'role' => $user->role,
+            ]);
+            return false;
+        }
+
         // Toujours créer une notification en base de données (avec store_id pour multi-établissements)
         try {
             Notification::create([
@@ -61,6 +70,9 @@ class NotificationService
                     'super_task_missing',
                     'task_overdue',
                     'super_task_overdue',
+                    'support_ticket_new',
+                    'support_ticket_reply',
+                    'super_admin_broadcast',
                 ], true),
                 'whatsapp_enabled' => false,
                 'severity_level' => 'all'
@@ -69,8 +81,8 @@ class NotificationService
 
         $sent = false;
 
-        // Notification Push
-        if ($preference->push_enabled && in_array($type, ['push', 'all'])) {
+        // Notification Push : uniquement pour admin et super_admin (les employés ne reçoivent pas de push)
+        if (in_array($user->role, ['admin', 'super_admin'], true) && $preference->push_enabled && in_array($type, ['push', 'all'])) {
             $sent = $this->sendPushNotification($user, $title, $message, $data) || $sent;
         }
 

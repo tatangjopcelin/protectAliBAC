@@ -140,10 +140,18 @@ class SubscriptionController extends Controller
                 $data['plan_name'] = 'Abonnement actif';
             }
         } else {
-            // Pas d'abonnement Stripe sur l'établissement : vérifier le plan gratuit (essai 15 jours)
+            // Pas d'abonnement Stripe : accès libre (super admin) ou plan gratuit (essai 15 jours)
             $user->load('store');
             $store = $user->store;
-            if ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
+            if ($store && $store->free_access_granted_at) {
+                $data['subscribed'] = true;
+                $data['plan_name'] = 'Accès libre (Pro)';
+                $data['plan_slug'] = 'pro';
+                $data['limits'] = SubscriptionPlan::getLimitsBySlug('pro');
+                $data['pro_features_allowed'] = true;
+                $data['starts_at'] = $store->free_access_granted_at->toIso8601String();
+                $data['ends_at'] = null;
+            } elseif ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
                 $data['subscribed'] = true;
                 $data['plan_name'] = 'Gratuit';
                 $data['plan_slug'] = 'gratuit';

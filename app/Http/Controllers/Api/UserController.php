@@ -174,10 +174,13 @@ class UserController extends Controller
                 }
             }
         } else {
-            // Pas d'abonnement Stripe : plan gratuit (essai 15 jours de l'établissement)
+            // Pas d'abonnement Stripe : accès libre (super admin) ou essai 15 jours
             $currentUser->load('store');
             $store = $currentUser->store;
-            if ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
+            if ($store && $store->free_access_granted_at) {
+                $limits = SubscriptionPlan::getLimitsBySlug('pro');
+                $maxUsers = $limits['max_users'] ?? null;
+            } elseif ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
                 $limits = SubscriptionPlan::getLimitsBySlug('gratuit');
                 $maxUsers = $limits['max_users'] ?? null;
             } else {
