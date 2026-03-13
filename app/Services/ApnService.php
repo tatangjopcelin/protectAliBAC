@@ -65,6 +65,12 @@ class ApnService
             'apns-push-type: alert',
             'content-type: application/json',
         ];
+        // Regroupement / remplacement des notifications (comme le tag FCM sur Android).
+        // Quand APNs sera configuré, les notifications avec le même collapse-id s'afficheront en une seule.
+        $collapseId = isset($data['tag']) && $data['tag'] !== '' ? (string) $data['tag'] : null;
+        if ($collapseId !== null) {
+            $headers[] = 'apns-collapse-id: '.$collapseId;
+        }
 
         curl_setopt_array($ch, [
             CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_2_0,
