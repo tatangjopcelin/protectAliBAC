@@ -14,9 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->prepend(\App\Http\Middleware\HandlePreflight::class);
-        $middleware->prepend(\App\Http\Middleware\LogApiRequest::class);
+        // NOTE: prepend() place chaque middleware "devant" les précédents.
+        // Pour que le preflight OPTIONS soit traité en premier, on le prepend en dernier.
         $middleware->prepend(HandleCors::class);
+        $middleware->prepend(\App\Http\Middleware\LogApiRequest::class);
+        $middleware->prepend(\App\Http\Middleware\HandlePreflight::class);
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
         ]);
