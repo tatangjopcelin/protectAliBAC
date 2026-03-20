@@ -96,19 +96,19 @@ class AIController extends Controller
     }
 
     /**
-     * Test de connexion à l'API Cohere
+     * Test de connexion à l'API GroqCloud
      */
     public function testConnection(Request $request)
     {
         try {
-            $aiService = app(\App\Services\CohereService::class);
+            $aiService = app(\App\Services\GroqService::class);
             
             if (!$aiService->isConfigured()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'COHERE_API_KEY n\'est pas configurée dans le fichier .env',
+                    'message' => 'GROQ_API_KEY n\'est pas configurée dans le fichier .env',
                     'configured' => false,
-                    'hint' => 'Ajoutez COHERE_API_KEY=votre-cle dans le fichier .env. Obtenez une clé gratuite sur https://cohere.com/'
+                    'hint' => 'Ajoutez GROQ_API_KEY=votre-cle dans le fichier .env. Obtenez une clé gratuite sur https://groq.com/'
                 ], 400);
             }
 
@@ -126,7 +126,7 @@ class AIController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Connexion à Cohere réussie !',
+                'message' => 'Connexion à Groq réussie !',
                 'configured' => true,
                 'test_response' => $content,
                 'model' => 'command',
@@ -134,14 +134,14 @@ class AIController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Erreur test connexion Cohere: ' . $e->getMessage());
+            \Log::error('Erreur test connexion Groq: ' . $e->getMessage());
             
             $errorMessage = $e->getMessage();
-            $hint = 'Vérifiez votre clé API Cohere dans le fichier .env';
+            $hint = 'Vérifiez votre clé API Groq dans le fichier .env';
             
             // Détecter les erreurs spécifiques
             if (str_contains($errorMessage, 'API key') || str_contains($errorMessage, '401') || str_contains($errorMessage, '403')) {
-                $hint = 'Votre clé API Cohere est invalide. Obtenez une nouvelle clé gratuite sur https://cohere.com/';
+                $hint = 'Votre clé API Groq est invalide. Obtenez une nouvelle clé gratuite sur https://groq.com/';
             } elseif (str_contains($errorMessage, 'Connection')) {
                 $hint = 'Problème de connexion. Vérifiez votre connexion internet.';
             } elseif (str_contains($errorMessage, 'rate limit') || str_contains($errorMessage, '429')) {
@@ -150,11 +150,11 @@ class AIController extends Controller
             
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la connexion à Cohere',
+                'message' => 'Erreur lors de la connexion à Groq',
                 'error' => $errorMessage,
                 'configured' => $aiService->isConfigured() ?? false,
                 'hint' => $hint,
-                'help_url' => 'https://cohere.com/'
+                'help_url' => 'https://groq.com/'
             ], 500);
         }
     }

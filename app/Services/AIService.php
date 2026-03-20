@@ -9,13 +9,13 @@ use App\Models\StockMovement;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use App\Services\CohereService;
+use App\Services\GroqService;
 
 class AIService
 {
     protected $aiService;
 
-    public function __construct(CohereService $aiService)
+    public function __construct(GroqService $aiService)
     {
         $this->aiService = $aiService;
     }
