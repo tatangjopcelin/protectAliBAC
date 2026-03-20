@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Services\AlertService;
 use App\Services\NotificationService;
@@ -128,11 +129,14 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'category_id' => 'required|exists:categories,id',
-            'supplier_id' => 'nullable|exists:suppliers,id',
+            'supplier_name' => 'required|string|max:255',
+            'supplier_email' => 'nullable|email|max:255',
+            'supplier_phone' => 'nullable|string|max:50',
+            'supplier_address' => 'nullable|string',
             'zone_id' => 'required|exists:zones,id',
             'quantity' => 'required|numeric|min:0',
             'unit' => 'required|string',
-            'min_quantity' => 'nullable|numeric|min:0',
+            'min_quantity' => 'required|numeric|min:0',
             'reception_date' => 'required|date',
             'expiration_date' => 'required|date|after:reception_date',
             'purchase_price' => 'nullable|numeric|min:0',
@@ -146,6 +150,37 @@ class ProductController extends Controller
             'origin_country' => 'nullable|string|max:100',        // 4. Pays d'origine
             'certificate_number' => 'nullable|string|max:255',    // 5. Numéro de certificat
         ]);
+
+        // Résoudre le fournisseur à partir du texte libre ("supplier_name")
+        $supplierName = trim($validated['supplier_name']);
+        $supplierEmail = $validated['supplier_email'] ?? null;
+        $supplierPhone = $validated['supplier_phone'] ?? null;
+        $supplierAddress = $validated['supplier_address'] ?? null;
+        $supplier = Supplier::whereRaw('LOWER(name) = LOWER(?)', [$supplierName])->first();
+        if (!$supplier) {
+            $supplier = Supplier::create([
+                'name' => $supplierName,
+                'email' => $supplierEmail,
+                'phone' => $supplierPhone,
+                'address' => $supplierAddress,
+                'is_active' => true,
+            ]);
+        } else {
+            // Ne met à jour les infos que si on a reçu des valeurs non vides.
+            if (!is_null($supplierEmail) && trim((string) $supplierEmail) !== '') {
+                $supplier->email = $supplierEmail;
+            }
+            if (!is_null($supplierPhone) && trim((string) $supplierPhone) !== '') {
+                $supplier->phone = $supplierPhone;
+            }
+            if (!is_null($supplierAddress) && trim((string) $supplierAddress) !== '') {
+                $supplier->address = $supplierAddress;
+            }
+            $supplier->save();
+        }
+        $validated['supplier_id'] = $supplier->id;
+        unset($validated['supplier_name']);
+        unset($validated['supplier_email'], $validated['supplier_phone'], $validated['supplier_address']);
 
         // Vérifier que la zone appartient au même établissement que l'utilisateur
         $zone = \App\Models\Zone::find($validated['zone_id']);
@@ -287,11 +322,14 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
             'category_id' => 'sometimes|exists:categories,id',
-            'supplier_id' => 'nullable|exists:suppliers,id',
+            'supplier_name' => 'required|string|max:255',
+            'supplier_email' => 'nullable|email|max:255',
+            'supplier_phone' => 'nullable|string|max:50',
+            'supplier_address' => 'nullable|string',
             'zone_id' => 'sometimes|exists:zones,id',
             'quantity' => 'sometimes|numeric|min:0',
             'unit' => 'sometimes|string',
-            'min_quantity' => 'nullable|numeric|min:0',
+            'min_quantity' => 'required|numeric|min:0',
             'reception_date' => 'sometimes|date',
             'expiration_date' => 'sometimes|date',
             'purchase_price' => 'nullable|numeric|min:0',
@@ -337,12 +375,45 @@ class ProductController extends Controller
             ]
         ]);
 
+        // Résoudre le fournisseur à partir du texte libre ("supplier_name")
+        $supplierName = trim($validated['supplier_name']);
+        $supplierEmail = $validated['supplier_email'] ?? null;
+        $supplierPhone = $validated['supplier_phone'] ?? null;
+        $supplierAddress = $validated['supplier_address'] ?? null;
+        $supplier = Supplier::whereRaw('LOWER(name) = LOWER(?)', [$supplierName])->first();
+        if (!$supplier) {
+            $supplier = Supplier::create([
+                'name' => $supplierName,
+                'email' => $supplierEmail,
+                'phone' => $supplierPhone,
+                'address' => $supplierAddress,
+                'is_active' => true,
+            ]);
+        } else {
+            // Ne met à jour les infos que si on a reçu des valeurs non vides.
+            if (!is_null($supplierEmail) && trim((string) $supplierEmail) !== '') {
+                $supplier->email = $supplierEmail;
+            }
+            if (!is_null($supplierPhone) && trim((string) $supplierPhone) !== '') {
+                $supplier->phone = $supplierPhone;
+            }
+            if (!is_null($supplierAddress) && trim((string) $supplierAddress) !== '') {
+                $supplier->address = $supplierAddress;
+            }
+            $supplier->save();
+        }
+        $validated['supplier_id'] = $supplier->id;
+        unset($validated['supplier_name']);
+        unset($validated['supplier_email'], $validated['supplier_phone'], $validated['supplier_address']);
+
         $product->update($validated);
         
         // Recharger le produit pour vérifier que les données sont bien enregistrées
         $product->refresh();
         \Log::info('Produit après mise à jour', [
             'product_id' => $product->id,
+            'supplier_id' => $product->supplier_id,
+            'supplier_name' => $product->supplier?->name,
             'batch_number' => $product->batch_number,
             'factory_name' => $product->factory_name,
             'origin_country' => $product->origin_country,
@@ -935,7 +1006,7 @@ class ProductController extends Controller
                     })->where('quantity', '<=', Product::LOW_STOCK_DEFAULT_THRESHOLD);
                 });
             })
-            ->with(['category', 'zone']);
+            ->with(['category', 'zone', 'supplier']);
         $products = $query->get();
         return response()->json($products);
     }

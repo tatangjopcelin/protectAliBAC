@@ -355,17 +355,23 @@ class AIService
                 (max(0, $prediction['predicted_consumption'] - $product->quantity) + ($product->min_quantity * 2));
 
             if ($suggestedQuantity > 0) {
+                // On convertit en entiers pour éviter l'affichage de décimales (ex: 2.000)
+                $currentStockInt = (int) round((float) $product->quantity, 0);
+                $minQuantityInt = (int) round((float) $product->min_quantity, 0);
+                $predictedConsumptionInt = (int) round((float) $prediction['predicted_consumption'], 0);
+                $suggestedQuantityInt = (int) round((float) $suggestedQuantity, 0);
+
                 $suggestion = AISuggestion::create([
                     'type' => 'order',
                     'title' => $orderAnalysis['title'] ?? "Commande suggérée: {$product->name}",
-                    'description' => $orderAnalysis['description'] ?? "Stock bas ({$product->quantity} {$product->unit}). Consommation prévue: {$prediction['predicted_consumption']} {$product->unit} sur 7 jours.",
+                    'description' => $orderAnalysis['description'] ?? "Stock bas ({$currentStockInt} {$product->unit}). Consommation prévue: {$predictedConsumptionInt} {$product->unit} sur 7 jours.",
                     'data' => [
                         'product_id' => $product->id,
                         'supplier_id' => $product->supplier_id,
-                        'current_stock' => $product->quantity,
-                        'min_quantity' => $product->min_quantity,
-                        'suggested_quantity' => round($suggestedQuantity, 3),
-                        'predicted_consumption' => $prediction['predicted_consumption'],
+                        'current_stock' => $currentStockInt,
+                        'min_quantity' => $minQuantityInt,
+                        'suggested_quantity' => $suggestedQuantityInt,
+                        'predicted_consumption' => $predictedConsumptionInt,
                         'confidence' => $prediction['confidence'],
                         'ai_reasoning' => $orderAnalysis['reasoning'] ?? null,
                     ],
