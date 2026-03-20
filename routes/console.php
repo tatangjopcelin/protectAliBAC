@@ -63,3 +63,8 @@ Schedule::command('tasks:notify-overdue')
 Schedule::command('super-tasks:notify-overdue')
     ->dailyAt('08:30')
     ->description('Envoie une notification aux employés et aux managers pour les super tâches en retard');
+
+// Nettoyer les conversations IA de plus de 3 jours (une fois par jour)
+Schedule::command('ai:prune-conversations')
+    ->everyTenMinutes()
+    ->description('Supprime les conversations IA créées il y a plus de 3 jours (toutes les 10 minutes)');

@@ -169,6 +169,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/ai/suggest-orders', [AIController::class, 'suggestOrders']); // Suggestions de commandes
     Route::get('/ai/detect-anomalies', [AIController::class, 'detectAnomalies']); // Détection d'anomalies
     Route::get('/ai/waste-reduction', [AIController::class, 'wasteReductionSuggestions']); // Suggestions de réduction de gaspillage
+    Route::post('/ai/chat', [AIController::class, 'chat']); // Chat direct avec l'IA
+    Route::get('/ai/chat/latest', [AIController::class, 'latestChatConversation']); // Dernière conversation IA
     Route::get('/ai/suggestions', [AIController::class, 'index']); // Liste des suggestions
     Route::put('/ai/suggestions/{id}/status', [AIController::class, 'updateStatus']); // Mettre à jour le statut d'une suggestion
 });

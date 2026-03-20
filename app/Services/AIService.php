@@ -22,12 +22,15 @@ class AIService
     /**
      * Génère des suggestions de recettes basées sur les produits qui expirent bientôt (avec IA)
      */
-    public function suggestRecipesForExpiringProducts(int $days = 3): array
+    public function suggestRecipesForExpiringProducts(int $days = 3, int $storeId): array
     {
         $expiringProducts = Product::where('is_active', true)
             ->where('expiration_date', '<=', Carbon::now()->addDays($days))
             ->where('expiration_date', '>=', Carbon::today())
             ->where('quantity', '>', 0)
+            ->whereHas('zone', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
             ->with(['category', 'zone', 'supplier'])
             ->get();
 
@@ -41,10 +44,10 @@ class AIService
             // Trouver des recettes existantes qui utilisent ce produit
             $existingRecipes = Recipe::whereHas('ingredients', function ($query) use ($product) {
                 $query->where('product_id', $product->id);
-            })->with('ingredients.product')->get();
+            })->with(['ingredients.product.zone'])->get();
 
             // Utiliser l'IA pour suggérer des recettes créatives
-            $aiSuggestions = $this->getAIRecipeSuggestions($product, $existingRecipes);
+            $aiSuggestions = $this->getAIRecipeSuggestions($product, $existingRecipes, $storeId);
 
             foreach ($aiSuggestions as $aiSuggestion) {
                 $suggestion = AISuggestion::create([
@@ -68,7 +71,7 @@ class AIService
     /**
      * Utilise Cohere pour générer des suggestions de recettes intelligentes
      */
-    private function getAIRecipeSuggestions(Product $product, $existingRecipes): array
+    private function getAIRecipeSuggestions(Product $product, $existingRecipes, int $storeId): array
     {
         try {
             $productInfo = [
@@ -137,9 +140,15 @@ class AIService
                 $missingIngredients = [];
 
                 foreach ($recipe->ingredients as $ingredient) {
-                    if ($ingredient->product->quantity < $ingredient->quantity) {
+                    $ingredientProduct = $ingredient->product;
+                    if (!$ingredientProduct || ($ingredientProduct->zone?->store_id !== $storeId)) {
                         $allAvailable = false;
-                        $missingIngredients[] = $ingredient->product->name;
+                        $missingIngredients[] = $ingredientProduct?->name ?? 'Ingrédient';
+                        continue;
+                    }
+                    if ($ingredientProduct->quantity < $ingredient->quantity) {
+                        $allAvailable = false;
+                        $missingIngredients[] = $ingredientProduct->name;
                     }
                 }
 
@@ -182,13 +191,26 @@ class AIService
     /**
      * Prédit la consommation future d'un produit avec analyse IA avancée
      */
-    public function predictConsumption(int $productId, int $days = 7): array
+    public function predictConsumption(int $productId, int $days = 7, int $storeId): array
     {
-        $product = Product::findOrFail($productId);
+        $product = Product::with(['zone'])->findOrFail($productId);
+
+        // Sécurité multi-établissements
+        if ($product->zone?->store_id !== $storeId) {
+            return [
+                'product_id' => $productId,
+                'product_name' => $product->name ?? 'N/A',
+                'predicted_consumption' => 0,
+                'confidence' => 0.0,
+                'message' => 'Produit hors de votre établissement',
+                'ai_analysis' => null,
+            ];
+        }
 
         // Récupérer l'historique des sorties des 90 derniers jours
         $movements = StockMovement::where('product_id', $productId)
             ->whereIn('type', ['used', 'exit', 'wasted'])
+            ->where('store_id', $storeId)
             ->where('created_at', '>=', Carbon::now()->subDays(90))
             ->orderBy('created_at')
             ->get();
@@ -327,10 +349,13 @@ class AIService
     /**
      * Génère des suggestions de commandes avec analyse IA
      */
-    public function suggestOrders(): array
+    public function suggestOrders(int $storeId): array
     {
         $lowStockProducts = Product::where('is_active', true)
             ->where('quantity', '<=', DB::raw('min_quantity'))
+            ->whereHas('zone', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
             ->with(['supplier', 'category'])
             ->get();
 
@@ -346,7 +371,7 @@ class AIService
             }
 
             // Prédire la consommation avec IA
-            $prediction = $this->predictConsumption($product->id, 7);
+            $prediction = $this->predictConsumption($product->id, 7, $storeId);
 
             // Utiliser l'IA pour analyser la quantité à commander
             $orderAnalysis = $this->getAIOrderAnalysis($product, $prediction);
@@ -437,21 +462,27 @@ class AIService
     /**
      * Détecte les anomalies avec analyse IA contextuelle
      */
-    public function detectAnomalies(): array
+    public function detectAnomalies(int $storeId): array
     {
         $anomalies = [];
-        $products = Product::where('is_active', true)->get();
+        $products = Product::where('is_active', true)
+            ->whereHas('zone', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->get();
 
         foreach ($products as $product) {
             // Consommation des 7 derniers jours
             $recentConsumption = StockMovement::where('product_id', $product->id)
                 ->whereIn('type', ['used', 'exit', 'wasted'])
+                ->where('store_id', $storeId)
                 ->where('created_at', '>=', Carbon::now()->subDays(7))
                 ->sum('quantity');
 
             // Consommation moyenne des 30 jours précédents
             $averageConsumption = StockMovement::where('product_id', $product->id)
                 ->whereIn('type', ['used', 'exit', 'wasted'])
+                ->where('store_id', $storeId)
                 ->where('created_at', '>=', Carbon::now()->subDays(37))
                 ->where('created_at', '<', Carbon::now()->subDays(7))
                 ->sum('quantity') / 30;
@@ -525,10 +556,11 @@ class AIService
     /**
      * Génère des suggestions de réduction de gaspillage avec IA
      */
-    public function getWasteReductionSuggestions(): array
+    public function getWasteReductionSuggestions(int $storeId): array
     {
         $wastedProducts = StockMovement::where('type', 'wasted')
             ->where('created_at', '>=', Carbon::now()->subDays(30))
+            ->where('store_id', $storeId)
             ->with('product')
             ->get()
             ->groupBy('product_id');
