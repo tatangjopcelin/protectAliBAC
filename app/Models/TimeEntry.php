@@ -21,6 +21,7 @@ class TimeEntry extends Model
         'location',
         'notes',
         'clock_in_photo',
+        'clock_in_verification_code',
         'clock_out_signature',
     ];
 

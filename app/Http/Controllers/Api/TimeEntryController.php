@@ -1022,6 +1022,7 @@ class TimeEntryController extends Controller
             'date' => $today,
             'schedule_id' => $scheduleId,
             'clock_in' => $clockInTime,
+            'clock_in_verification_code' => $providedCode,
             'location' => $validated['location'] ?? null,
             'notes' => $validated['notes'] ?? null,
             'status' => 'present',
