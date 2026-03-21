@@ -256,7 +256,7 @@ class AIController extends Controller
             'conversation_id' => 'nullable|integer|min:1|exists:ai_conversations,id',
             'messages' => 'required|array|min:1',
             'messages.*.role' => 'required|in:user,assistant',
-            'messages.*.content' => 'required|string|max:2000',
+            'messages.*.content' => 'required|string|max:4000',
         ]);
 
         try {
