@@ -53,6 +53,8 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth-token')->plainTextToken;
 
+        $user->load('store');
+
         $sharedPermissions = null;
         if ($user->role === 'admin') {
             $sharedPermissions = array_fill_keys(\App\Models\User::SHARED_PERMISSIONS, true);
@@ -72,6 +74,12 @@ class AuthController extends Controller
                 'store_id' => $user->store_id,
                 'contract_hours_per_week' => $user->contract_hours_per_week,
                 'shared_permissions' => $sharedPermissions,
+                // Même structure que GET /user (code d'établissement pour l'app)
+                'store' => $user->store ? [
+                    'id' => $user->store->id,
+                    'name' => $user->store->name,
+                    'establishment_code' => $user->store->establishment_code,
+                ] : null,
             ],
             'token' => $token,
         ]);
@@ -93,16 +101,36 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
+            // Code établissement : toujours une chaîne de 4 caractères (JSON peut envoyer un entier)
+            $establishmentCodeNormalized = $request->input('establishment_code');
+            if ($request->input('registration_type') === 'join_store' && $establishmentCodeNormalized !== null && $establishmentCodeNormalized !== '') {
+                if (is_array($establishmentCodeNormalized)) {
+                    $establishmentCodeNormalized = '';
+                } else {
+                    $digits = preg_replace('/\D/', '', (string) $establishmentCodeNormalized);
+                    if (strlen($digits) > 0 && strlen($digits) < 4) {
+                        $digits = str_pad($digits, 4, '0', STR_PAD_LEFT);
+                    }
+                    if (strlen($digits) > 4) {
+                        $digits = substr($digits, 0, 4);
+                    }
+                    $establishmentCodeNormalized = $digits;
+                }
+            }
+
             // Normaliser les entrées pour éviter 422 (espaces, chaînes vides, types)
-            $request->merge([
+            // Ne pas fusionner establishment_code pour create_store : sinon merge(['establishment_code' => null])
+            // fait exister la clé et la règle `string` échoue sur null (bug 422 même sans rejoindre un établissement).
+            $mergePayload = [
                 'name' => is_string($request->input('name')) ? trim($request->input('name')) : $request->input('name'),
                 'email' => is_string($request->input('email')) ? trim($request->input('email')) : $request->input('email'),
                 'phone' => is_string($request->input('phone')) ? trim($request->input('phone')) : $request->input('phone'),
-                'establishment_code' => $request->input('registration_type') === 'join_store' && $request->has('establishment_code')
-                    ? trim((string) $request->input('establishment_code'))
-                    : $request->input('establishment_code'),
                 'zone_id' => $this->normalizeZoneId($request->input('zone_id')),
-            ]);
+            ];
+            if ($request->input('registration_type') === 'join_store') {
+                $mergePayload['establishment_code'] = $establishmentCodeNormalized;
+            }
+            $request->merge($mergePayload);
 
             $validated = $request->validate([
                 'registration_type' => 'required|string|in:create_store,join_store',
@@ -120,8 +148,8 @@ class AuthController extends Controller
                 'store_address' => 'nullable|string|max:500',
                 'store_phone' => 'nullable|string|max:20',
                 
-                // Code pour rejoindre un établissement (4 caractères, doit exister dans stores)
-                'establishment_code' => 'required_if:registration_type,join_store|string|size:4|exists:stores,establishment_code',
+                // Code pour rejoindre un établissement (ignoré si create_store ; nullable évite string sur null)
+                'establishment_code' => 'nullable|required_if:registration_type,join_store|string|size:4|exists:stores,establishment_code',
             ]);
 
             // Vérifier que l'email n'existe pas dans users OU pending_registrations
