@@ -309,6 +309,29 @@ class TimeEntryController extends Controller
     }
 
     /**
+     * Détail d’un pointage (GET time-entries/{id}) — utilisé après correction des pauses.
+     */
+    public function show(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $timeEntry = TimeEntry::with(['user', 'schedule', 'breaks'])->findOrFail($id);
+
+        if ($user->store_id && $timeEntry->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        if ((int) $timeEntry->user_id !== (int) $user->id && ! $user->hasSharedPermission('time_entry')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        return response()->json($timeEntry);
+    }
+
+    /**
      * Update a time entry (admin only)
      */
     public function update(Request $request, string $id)
@@ -339,6 +362,13 @@ class TimeEntryController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        // 0 ou valeur négative traitée comme « pas de pause déclarée » (évite les 0 ambigus en base)
+        if (array_key_exists('break_duration', $validated) && $validated['break_duration'] !== null) {
+            if ((float) $validated['break_duration'] <= 0) {
+                $validated['break_duration'] = null;
+            }
+        }
+
         $timeEntry->update($validated);
 
         // Recalculer les heures travaillées si nécessaire
@@ -347,7 +377,7 @@ class TimeEntryController extends Controller
             $timeEntry->save();
         }
 
-        return response()->json($timeEntry->load(['user', 'schedule']));
+        return response()->json($timeEntry->load(['user', 'schedule', 'breaks']));
     }
 
     /**

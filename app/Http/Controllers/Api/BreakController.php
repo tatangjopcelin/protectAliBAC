@@ -139,4 +139,93 @@ class BreakController extends Controller
 
         return response()->json($breaks);
     }
+
+    /**
+     * Corriger les horaires d'une pause (admin / chef / directeur avec permission time_entry)
+     */
+    public function updateBreak(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (! $user->hasSharedPermission('time_entry')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $break = WorkBreak::with('timeEntry')->findOrFail($id);
+        $timeEntry = $break->timeEntry;
+        if ($user->store_id && $timeEntry->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'start_break' => 'required|date',
+            'end_break' => 'required|date|after:start_break',
+        ]);
+
+        $appTimezone = config('app.timezone', 'Europe/Paris');
+        $start = $this->parseLocalOrIsoDateTime($validated['start_break'], $appTimezone);
+        $end = $this->parseLocalOrIsoDateTime($validated['end_break'], $appTimezone);
+        if ($end <= $start) {
+            return response()->json(['message' => 'La fin de pause doit être après le début'], 400);
+        }
+
+        $break->start_break = $start;
+        $break->end_break = $end;
+        $break->duration_minutes = $break->calculateDuration();
+        $break->save();
+
+        $this->recalculateTimeEntryBreakAggregates($timeEntry);
+
+        return response()->json($break->fresh()->load('timeEntry'));
+    }
+
+    /**
+     * Supprimer une pause (admin / chef / directeur avec permission time_entry)
+     */
+    public function deleteBreak(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (! $user->hasSharedPermission('time_entry')) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $break = WorkBreak::with('timeEntry')->findOrFail($id);
+        $timeEntry = $break->timeEntry;
+        if ($user->store_id && $timeEntry->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $break->delete();
+        $this->recalculateTimeEntryBreakAggregates($timeEntry);
+
+        return response()->json(['message' => 'Pause supprimée']);
+    }
+
+    private function parseLocalOrIsoDateTime(string $value, string $appTimezone): Carbon
+    {
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) {
+            return Carbon::createFromFormat('Y-m-d H:i:s', $value, $appTimezone);
+        }
+
+        return Carbon::parse($value)->setTimezone($appTimezone);
+    }
+
+    private function recalculateTimeEntryBreakAggregates(TimeEntry $timeEntry): void
+    {
+        $timeEntry->refresh();
+        $timeEntry->load('breaks');
+        $totalBreakMinutes = (int) WorkBreak::where('time_entry_id', $timeEntry->id)
+            ->whereNotNull('end_break')
+            ->sum('duration_minutes');
+        $timeEntry->break_duration = $totalBreakMinutes;
+        if ($timeEntry->clock_in && $timeEntry->clock_out) {
+            $timeEntry->hours_worked = $timeEntry->calculateHoursWorked();
+        }
+        $timeEntry->save();
+    }
 }

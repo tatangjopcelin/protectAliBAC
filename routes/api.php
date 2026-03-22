@@ -275,6 +275,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/breaks/start', [BreakController::class, 'startBreak']); // Démarrer une pause
     Route::post('/breaks/end', [BreakController::class, 'endBreak']); // Terminer une pause
     Route::get('/breaks/time-entry/{timeEntryId}', [BreakController::class, 'getBreaks']); // Obtenir les pauses d'un time entry
+    Route::put('/breaks/{id}', [BreakController::class, 'updateBreak']); // Corriger horaires d'une pause (admin / time_entry)
+    Route::delete('/breaks/{id}', [BreakController::class, 'deleteBreak']); // Supprimer une pause (admin / time_entry)
     
     // Routes pour la distribution des rapports de paie (admin uniquement)
     Route::post('/payroll-reports/distribute', [PayrollReportController::class, 'distribute']); // Distribuer les rapports
