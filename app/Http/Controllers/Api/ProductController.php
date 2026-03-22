@@ -1012,25 +1012,37 @@ class ProductController extends Controller
     }
 
     /**
-     * Produits à utiliser en priorité (FIFO)
+     * Produits à utiliser en priorité (FIFO) — limité à l'établissement de l'utilisateur.
      */
-    public function fifo($productId = null)
+    public function fifo(Request $request, $productId = null)
     {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $query = Product::query()
+            ->where('is_active', true)
+            ->with(['category', 'zone']);
+
+        if ($user->store_id) {
+            $query->whereHas('zone', function ($q) use ($user) {
+                $q->where('store_id', $user->store_id);
+            });
+        }
+
         if ($productId) {
-            // Pour un produit spécifique, retourner celui avec la date de péremption la plus proche
-            $product = Product::where('id', $productId)
-                ->where('is_active', true)
+            $product = (clone $query)
+                ->where('id', $productId)
                 ->orderBy('expiration_date', 'asc')
                 ->first();
-            
+
             return response()->json($product);
         }
 
-        // Tous les produits triés par FIFO
-        $products = Product::where('is_active', true)
+        $products = (clone $query)
             ->where('quantity', '>', 0)
             ->orderBy('expiration_date', 'asc')
-            ->with(['category', 'zone'])
             ->get();
 
         return response()->json($products);

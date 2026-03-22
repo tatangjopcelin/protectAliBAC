@@ -71,6 +71,12 @@ class PermissionSeeder extends Seeder
             ['name' => 'shopping_list.update', 'resource' => 'shopping_list', 'action' => 'update', 'description' => 'Modifier la liste d\'achats'],
             ['name' => 'shopping_list.delete', 'resource' => 'shopping_list', 'action' => 'delete', 'description' => 'Supprimer de la liste d\'achats'],
             ['name' => 'shopping_list.manage', 'resource' => 'shopping_list', 'action' => 'manage', 'description' => 'Gérer la liste d\'achats (marquer commandé/reçu)'],
+
+            // Catégories produits (référentiel)
+            ['name' => 'categories.view', 'resource' => 'categories', 'action' => 'view', 'description' => 'Voir les catégories produits'],
+            ['name' => 'categories.create', 'resource' => 'categories', 'action' => 'create', 'description' => 'Créer des catégories'],
+            ['name' => 'categories.update', 'resource' => 'categories', 'action' => 'update', 'description' => 'Modifier des catégories'],
+            ['name' => 'categories.delete', 'resource' => 'categories', 'action' => 'delete', 'description' => 'Supprimer des catégories'],
         ];
 
         foreach ($permissions as $permissionData) {
@@ -104,6 +110,7 @@ class PermissionSeeder extends Seeder
                 'stock_movements.view', 'stock_movements.create',
                 'stores.view',
                 'shopping_list.view', 'shopping_list.create', // Peut voir et ajouter à la liste
+                'categories.view', // Listes déroulantes produits (pas de gestion du référentiel)
             ],
 
             // Magasinier - Réception, transferts, inventaire
@@ -116,6 +123,7 @@ class PermissionSeeder extends Seeder
                 'suppliers.view',
                 'stores.view',
                 'shopping_list.view', 'shopping_list.create', 'shopping_list.update', 'shopping_list.manage', // Peut gérer la liste
+                'categories.view', // Voir les catégories (formulaires produits) — CRUD réservé admin / chef / directeur
             ],
 
             // Comptable - Rapports financiers uniquement
@@ -128,6 +136,7 @@ class PermissionSeeder extends Seeder
                 'suppliers.view',
                 'stores.view',
                 'shopping_list.view', // Peut voir la liste
+                'categories.view',
             ],
 
             // Boucher - Spécialisé dans la boucherie
@@ -139,6 +148,7 @@ class PermissionSeeder extends Seeder
                 'stock_movements.view', 'stock_movements.create',
                 'stores.view',
                 'shopping_list.view', 'shopping_list.create', // Peut voir et ajouter à la liste
+                'categories.view',
             ],
 
             // Serveur - Service en salle
@@ -149,6 +159,7 @@ class PermissionSeeder extends Seeder
                 'recipes.view', // Pour connaître les plats disponibles
                 'stores.view',
                 'shopping_list.view', 'shopping_list.create', // Peut voir et ajouter à la liste
+                'categories.view',
             ],
 
             // Directeur - Accès complet (similaire à admin mais sans gestion des rôles)
@@ -166,6 +177,14 @@ class PermissionSeeder extends Seeder
                         'permission_id' => $permission->id,
                     ]);
                 }
+            }
+        }
+
+        // Retirer le CRUD catégories au magasinier si déjà présent (référentiel = admin / chef / directeur)
+        foreach (['categories.create', 'categories.update', 'categories.delete'] as $permName) {
+            $perm = Permission::where('name', $permName)->first();
+            if ($perm) {
+                RolePermission::where('role', 'storekeeper')->where('permission_id', $perm->id)->delete();
             }
         }
     }

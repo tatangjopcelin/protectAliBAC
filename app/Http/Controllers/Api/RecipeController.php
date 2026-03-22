@@ -10,15 +10,25 @@ use Illuminate\Support\Facades\DB;
 
 class RecipeController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Recipe::with('ingredients.product')->where('is_active', true)->get());
+        $query = Recipe::with('ingredients.product')->where('is_active', true);
+
+        if ($request->filled('milieu')) {
+            $m = $request->query('milieu');
+            if (in_array($m, ['boucherie', 'cuisine', 'bar'], true)) {
+                $query->where('milieu', $m);
+            }
+        }
+
+        return response()->json($query->get());
     }
 
     public function store(Request $request)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'milieu' => 'required|in:boucherie,cuisine,bar',
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'servings' => 'nullable|integer|min:1',
@@ -53,6 +63,7 @@ class RecipeController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|string|max:255',
+            'milieu' => 'sometimes|required|in:boucherie,cuisine,bar',
             'description' => 'nullable|string',
             'instructions' => 'nullable|string',
             'servings' => 'nullable|integer|min:1',
@@ -73,11 +84,13 @@ class RecipeController extends Controller
         $recipe = Recipe::with('ingredients.product')->findOrFail($id);
 
         return DB::transaction(function () use ($recipe, $request) {
-            // Vérifier que tous les ingrédients sont disponibles
+            // Vérifier le stock utilisable (hors produits / lots périmés)
             foreach ($recipe->ingredients as $ingredient) {
-                if ($ingredient->product->quantity < $ingredient->quantity) {
+                $usable = (float) $ingredient->product->usable_quantity;
+                $need = (float) $ingredient->quantity;
+                if (round($usable, 3) < round($need, 3)) {
                     return response()->json([
-                        'error' => "Stock insuffisant pour {$ingredient->product->name}"
+                        'error' => "Stock insuffisant (hors périmés) pour « {$ingredient->product->name} ». Disponible : {$usable}, besoin : {$need}.",
                     ], 400);
                 }
             }
@@ -103,5 +116,16 @@ class RecipeController extends Controller
                 'recipe' => $recipe->load('ingredients.product')
             ]);
         });
+    }
+
+    /**
+     * Supprime une recette (les ingrédients sont supprimés en cascade).
+     */
+    public function destroy(string $id)
+    {
+        $recipe = Recipe::findOrFail($id);
+        $recipe->delete();
+
+        return response()->json(['message' => 'Recette supprimée avec succès']);
     }
 }

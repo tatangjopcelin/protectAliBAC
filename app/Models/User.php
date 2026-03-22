@@ -124,6 +124,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->role === 'admin';
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->role === 'super_admin';
+    }
+
     public function isChef(): bool
     {
         return $this->role === 'chef';
@@ -212,8 +217,8 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function hasPermission(string $permissionName): bool
     {
-        // Admin a tous les droits
-        if ($this->role === 'admin') {
+        // Admin et super admin : accès complet (aligné sur le reste de l’API)
+        if ($this->role === 'admin' || $this->role === 'super_admin') {
             return true;
         }
 

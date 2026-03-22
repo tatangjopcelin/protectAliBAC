@@ -44,6 +44,9 @@ class Product extends Model
         'manufacturing_date' => 'date',
     ];
 
+    /** Inclus dans le JSON API : stock utilisable (hors lots périmés). */
+    protected $appends = ['usable_quantity'];
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
@@ -109,8 +112,24 @@ class Product extends Model
 
     public function isExpired(): bool
     {
+        if (!$this->expiration_date) {
+            return ($this->status ?? '') === 'expired';
+        }
         $expirationDate = Carbon::parse($this->expiration_date)->startOfDay();
         return $expirationDate->lte(Carbon::today());
+    }
+
+    /**
+     * Quantité disponible pour la préparation (recettes, etc.) : 0 si le lot est périmé.
+     */
+    public function getUsableQuantityAttribute(): float
+    {
+        $q = (float) $this->quantity;
+        if ($q <= 0.0) {
+            return 0.0;
+        }
+
+        return $this->getComputedStatus() === 'expired' ? 0.0 : $q;
     }
 
     public function daysUntilExpiration(): int

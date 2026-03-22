@@ -81,7 +81,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/stores/clock-in-verification-method', [StoreController::class, 'updateClockInVerificationMethod']); // Admin: changer méthode de vérification
 });
 Route::apiResource('stores', StoreController::class);
-Route::apiResource('categories', CategoryController::class);
 Route::apiResource('suppliers', SupplierController::class);
 
 // Routes pour les zones (protégées par authentification pour la sécurité multi-establishment)
@@ -109,13 +108,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/{id}/reduce-stock', [ProductController::class, 'reduceStock']); // Réduire le stock d'un produit
     Route::post('/products/{id}/mark-expired', [ProductController::class, 'markAsExpired']); // Marquer un produit comme périmé
     Route::apiResource('products', ProductController::class);
+
+    // Recettes (fiches techniques + préparation / déstockage)
+    Route::post('/recipes/{recipe}/prepare', [RecipeController::class, 'prepare']);
+    Route::apiResource('recipes', RecipeController::class);
+
+    // Catégories produits (CRUD + permissions système)
+    Route::get('/categories', [CategoryController::class, 'index'])->middleware('permission:categories.view');
+    Route::get('/categories/{id}', [CategoryController::class, 'show'])->middleware('permission:categories.view');
+    Route::post('/categories', [CategoryController::class, 'store'])->middleware('permission:categories.create');
+    Route::put('/categories/{id}', [CategoryController::class, 'update'])->middleware('permission:categories.update');
+    Route::patch('/categories/{id}', [CategoryController::class, 'update'])->middleware('permission:categories.update');
+    Route::delete('/categories/{id}', [CategoryController::class, 'destroy'])->middleware('permission:categories.delete');
 });
 
 Route::apiResource('stock-movements', StockMovementController::class);
-
-// Routes spéciales pour les recettes
-Route::post('/recipes/{recipe}/prepare', [RecipeController::class, 'prepare']);
-Route::apiResource('recipes', RecipeController::class);
 
 // Routes spéciales pour les alertes (AVANT apiResource pour éviter les conflits)
 Route::middleware('auth:sanctum')->group(function () {

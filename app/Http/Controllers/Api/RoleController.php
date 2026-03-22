@@ -126,7 +126,7 @@ class RoleController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        if ($user->isAdmin()) {
+        if ($user->isAdmin() || $user->isSuperAdmin()) {
             $permissions = Permission::all();
         } else {
             $permissions = Permission::whereHas('rolePermissions', function ($query) use ($user) {
