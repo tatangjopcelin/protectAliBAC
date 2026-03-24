@@ -833,6 +833,7 @@ class ProductController extends Controller
             'photo' => 'nullable|string', // Photo en base64
             'force_update_date' => 'nullable|boolean', // Forcer la mise à jour même si date différente
             'create_new_product' => 'nullable|boolean', // Créer un nouveau produit si date différente
+            'barcode' => 'nullable|string|max:255', // Obligatoire côté métier si create_new_product (voir createNewProductFromExisting)
         ]);
 
         return DB::transaction(function () use ($product, $validated, $request) {
