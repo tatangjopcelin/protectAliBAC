@@ -10,6 +10,7 @@ class RecipeIngredient extends Model
     protected $fillable = [
         'recipe_id',
         'product_id',
+        'product_name_snapshot',
         'quantity',
         'unit',
     ];

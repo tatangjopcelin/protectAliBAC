@@ -94,6 +94,40 @@ class ProductController extends Controller
     }
 
     /**
+     * Liste des produits retirés (is_active = false) pour restauration/suppression définitive.
+     */
+    public function inactive(Request $request)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $query = Product::with(['category', 'supplier', 'zone.store'])
+            ->where('is_active', false);
+
+        if ($user->store_id) {
+            $query->whereHas('zone', function ($q) use ($user) {
+                $q->where('store_id', $user->store_id);
+            });
+        }
+
+        if ($request->has('zone_id')) {
+            $query->where('zone_id', $request->zone_id);
+        }
+        if ($request->has('category_id')) {
+            $query->where('category_id', $request->category_id);
+        }
+
+        $products = $query->orderBy('updated_at', 'desc')->get();
+        foreach ($products as $product) {
+            $product->status = $product->getComputedStatus();
+        }
+
+        return response()->json($products);
+    }
+
+    /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
@@ -473,6 +507,163 @@ class ProductController extends Controller
         }
 
         return response()->json(['message' => 'Produit désactivé'], 200);
+    }
+
+    /**
+     * Restaurer un produit retiré (is_active=true) avec mise à jour optionnelle des infos.
+     */
+    public function restore(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function ($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
+
+        if (!(new \App\Policies\ProductPolicy())->update($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'category_id' => 'sometimes|exists:categories,id',
+            'supplier_id' => 'sometimes|nullable|exists:suppliers,id',
+            'supplier_name' => 'sometimes|string|max:255',
+            'supplier_email' => 'nullable|email|max:255',
+            'supplier_phone' => 'nullable|string|max:50',
+            'supplier_address' => 'nullable|string',
+            'zone_id' => 'sometimes|exists:zones,id',
+            'quantity' => 'sometimes|numeric|min:0',
+            'unit' => 'sometimes|string|max:50',
+            'min_quantity' => 'sometimes|numeric|min:0',
+            'reception_date' => 'sometimes|date',
+            'expiration_date' => 'sometimes|date',
+            'purchase_price' => 'nullable|numeric|min:0',
+            'photo' => 'sometimes|string',
+            'barcode' => 'sometimes|string|max:255',
+            'notes' => 'nullable|string',
+            'batch_number' => 'nullable|string|max:255',
+            'manufacturing_date' => 'nullable|date',
+            'factory_name' => 'nullable|string|max:255',
+            'origin_country' => 'nullable|string|max:100',
+            'certificate_number' => 'nullable|string|max:255',
+        ]);
+
+        if (isset($validated['zone_id']) && (int) $validated['zone_id'] !== (int) $product->zone_id) {
+            $zone = \App\Models\Zone::find($validated['zone_id']);
+            if (!$zone) {
+                return response()->json([
+                    'error' => 'Zone introuvable',
+                    'message' => 'La zone sélectionnée n\'existe pas.'
+                ], 422);
+            }
+            if ($user->store_id && $zone->store_id !== $user->store_id) {
+                return response()->json([
+                    'error' => 'Zone non accessible',
+                    'message' => 'La zone sélectionnée n\'appartient pas à votre établissement.'
+                ], 403);
+            }
+        }
+
+        if (isset($validated['barcode'])) {
+            $existing = Product::where('barcode', $validated['barcode'])
+                ->where('id', '!=', $product->id)
+                ->where('is_active', true)
+                ->first();
+            if ($existing) {
+                return response()->json([
+                    'error' => 'Ce code-barres existe déjà',
+                    'message' => 'Ce QR code est déjà utilisé par un autre produit actif.'
+                ], 422);
+            }
+        }
+
+        // Supporte l'édition complète du fournisseur en restauration (même logique que create/update)
+        if (array_key_exists('supplier_name', $validated)) {
+            $supplierName = trim((string) ($validated['supplier_name'] ?? ''));
+            if ($supplierName !== '') {
+                $supplierEmail = $validated['supplier_email'] ?? null;
+                $supplierPhone = $validated['supplier_phone'] ?? null;
+                $supplierAddress = $validated['supplier_address'] ?? null;
+
+                $supplier = Supplier::whereRaw('LOWER(name) = LOWER(?)', [$supplierName])->first();
+                if (!$supplier) {
+                    $supplier = Supplier::create([
+                        'name' => $supplierName,
+                        'email' => $supplierEmail,
+                        'phone' => $supplierPhone,
+                        'address' => $supplierAddress,
+                        'is_active' => true,
+                    ]);
+                } else {
+                    if (!is_null($supplierEmail) && trim((string) $supplierEmail) !== '') {
+                        $supplier->email = $supplierEmail;
+                    }
+                    if (!is_null($supplierPhone) && trim((string) $supplierPhone) !== '') {
+                        $supplier->phone = $supplierPhone;
+                    }
+                    if (!is_null($supplierAddress) && trim((string) $supplierAddress) !== '') {
+                        $supplier->address = $supplierAddress;
+                    }
+                    $supplier->save();
+                }
+                $validated['supplier_id'] = $supplier->id;
+            }
+            unset($validated['supplier_name'], $validated['supplier_email'], $validated['supplier_phone'], $validated['supplier_address']);
+        }
+
+        $product->fill($validated);
+        $product->is_active = true;
+        $product->save();
+        $product->updateStatus();
+        $product->load('zone.store');
+        $this->alertService->checkProduct($product);
+
+        $this->recordTrace($product->id, 'restored', $user->id, [
+            'changes' => array_keys($validated),
+        ]);
+
+        return response()->json([
+            'message' => 'Produit restauré avec succès',
+            'product' => $product->load(['category', 'supplier', 'zone.store'])
+        ]);
+    }
+
+    /**
+     * Suppression définitive d'un produit (hard delete).
+     */
+    public function forceDestroy(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $product = Product::where('id', $id)
+            ->whereHas('zone', function ($q) use ($user) {
+                if ($user->store_id) {
+                    $q->where('store_id', $user->store_id);
+                }
+            })
+            ->firstOrFail();
+
+        if (!(new \App\Policies\ProductPolicy())->delete($user, $product)) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $productName = $product->name;
+        $product->delete();
+
+        return response()->json([
+            'message' => "Produit « {$productName} » supprimé définitivement"
+        ], 200);
     }
 
     /**

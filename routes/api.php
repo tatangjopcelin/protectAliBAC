@@ -98,6 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/products/expiring/{days}', [ProductController::class, 'expiring']);
     Route::get('/products/expired', [ProductController::class, 'expired']);
+    Route::get('/products/inactive', [ProductController::class, 'inactive']);
     Route::get('/products/low-stock', [ProductController::class, 'lowStock']);
     Route::get('/products/fifo/{productId?}', [ProductController::class, 'fifo']);
     Route::post('/products/scan', [ProductController::class, 'scan']); // Scanner un produit
@@ -107,6 +108,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/products/{id}/add-stock', [ProductController::class, 'addStock']); // Ajouter du stock à un produit
     Route::post('/products/{id}/reduce-stock', [ProductController::class, 'reduceStock']); // Réduire le stock d'un produit
     Route::post('/products/{id}/mark-expired', [ProductController::class, 'markAsExpired']); // Marquer un produit comme périmé
+    Route::post('/products/{id}/restore', [ProductController::class, 'restore']); // Restaurer un produit retiré
+    Route::delete('/products/{id}/force', [ProductController::class, 'forceDestroy']); // Suppression définitive
     Route::apiResource('products', ProductController::class);
 
     // Recettes (fiches techniques + préparation / déstockage)
