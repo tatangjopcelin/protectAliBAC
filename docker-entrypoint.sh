@@ -11,8 +11,8 @@ if [ ! -f vendor/autoload.php ]; then
   composer install --no-interaction
 fi
 
-# Configurer le scheduler Laravel (exécution toutes les minutes)
-(crontab -l 2>/dev/null; echo "* * * * * cd $PROJECT_PATH && php artisan schedule:run >> /dev/null 2>&1") | crontab -
+# Configurer le scheduler Laravel (exécution toutes les 30 minutes)
+(crontab -l 2>/dev/null; echo "*/30 * * * * cd $PROJECT_PATH && php artisan schedule:run >> /dev/null 2>&1") | crontab -
 
 # Démarrer le démon cron en arrière-plan
 cron

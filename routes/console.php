@@ -29,10 +29,10 @@ Schedule::call(function () {
 })->weeklyOn(0, '02:00')
   ->description('Nettoie les anciennes alertes lues (plus de 30 jours)');
 
-// Vérifier les limites d'heures supplémentaires toutes les 15 minutes
+// Vérifier les limites d'heures supplémentaires toutes les 30 minutes
 Schedule::command('time-entries:check-overtime')
-    ->everyFifteenMinutes()
-    ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte');
+    ->everyThirtyMinutes()
+    ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte (toutes les 30 minutes)');
 
 // Vérifier les super tâches hebdomadaires chaque lundi à 8h00
 Schedule::command('super-tasks:check-weekly')
@@ -64,7 +64,7 @@ Schedule::command('super-tasks:notify-overdue')
     ->dailyAt('08:30')
     ->description('Envoie une notification aux employés et aux managers pour les super tâches en retard');
 
-// Nettoyer les conversations IA de plus de 3 jours (une fois par jour)
+// Nettoyer les conversations IA de plus de 3 jours (toutes les heures)
 Schedule::command('ai:prune-conversations')
-    ->everyTenMinutes()
-    ->description('Supprime les conversations IA créées il y a plus de 3 jours (toutes les 10 minutes)');
+    ->hourly()
+    ->description('Supprime les conversations IA créées il y a plus de 3 jours (toutes les heures)');

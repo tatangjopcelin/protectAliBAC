@@ -55,7 +55,7 @@ In order to ensure that the Laravel community is welcoming to all, please review
 Le pointage de sortie automatique (quand la limite d’heures sup est dépassée) s’exécute via le scheduler Laravel toutes les **15 minutes**.
 
 - **Avec Docker** : la cron est configurée automatiquement au démarrage du conteneur `boucherie_app`. Aucune action manuelle. Reconstruire l’image après modification du Dockerfile : `docker compose build app && docker compose up -d app`.
-- **Sans Docker** : exécuter une fois `./setup-cron.sh` dans le répertoire protectAli, ou ajouter à la crontab : `* * * * * cd /chemin/vers/protectAli && php artisan schedule:run >> /dev/null 2>&1`
+- **Sans Docker** : ajouter à la crontab : `* * * * * cd /chemin/vers/protectAli && php artisan schedule:run >> /dev/null 2>&1`
 
 ## Security Vulnerabilities
 
