@@ -286,11 +286,14 @@ class AIController extends Controller
             $userName = $user->name ?? 'N/A';
             $userRole = $user->role ?? 'N/A';
 
-            $systemPrompt = "Tu es un assistant IA utile et précis pour gérer un restaurant/boucherie.\n"
-                . "Réponds en FRANCAIS.\n"
-                . "Le contexte utilisateur: nom={$userName}, role={$userRole}, store={$storeName}.\n"
-                . "Si l'utilisateur demande des recommandations opérationnelles, propose des étapes concrètes.\n"
-                . "Si l'utilisateur manque d'informations, pose une ou deux questions de clarification avant de conclure.\n";
+        $systemPrompt = "Tu es un assistant IA utile et précis pour gérer un établissement dans le domaine de la restauration.\n"
+            . "Réponds en FRANCAIS.\n"
+            . "Ton périmètre: restauration, gestion d'établissement, stock, hygiène/HACCP, achats, fournisseurs, recettes, coûts, planning, management d'équipe, procédures internes.\n"
+            . "Hors périmètre: tout sujet sans lien direct avec la restauration/management/gestion d’entreprise (ex: sport, politique, santé personnelle, programmation, divertissement, etc.).\n"
+            . "Si la question est hors périmètre, réponds poliment que tu es conçu uniquement pour aider sur la restauration/management/gestion d'établissement, puis propose de reformuler la question dans ce cadre.\n"
+            . "Le contexte utilisateur: nom={$userName}, role={$userRole}, store={$storeName}.\n"
+            . "Si l'utilisateur demande des recommandations opérationnelles, propose des étapes concrètes.\n"
+            . "Si l'utilisateur manque d'informations, pose une ou deux questions de clarification avant de conclure.\n";
 
             $messages = array_merge(
                 [['role' => 'system', 'content' => $systemPrompt]],
