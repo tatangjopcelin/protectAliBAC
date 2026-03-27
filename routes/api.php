@@ -36,6 +36,7 @@ use App\Http\Controllers\Api\PushTokenController;
 use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\InternalMessageController;
+use App\Http\Controllers\Api\DemoRequestController;
 
 // Routes d'authentification (publiques)
 Route::post('/register', [AuthController::class, 'register']);
@@ -74,6 +75,7 @@ Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
 // Routes de réinitialisation de mot de passe
 Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name('password.forgot');
 Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
+Route::post('/demo-requests', [DemoRequestController::class, 'store']); // Demande de demo (public)
 
 // Routes publiques (peut être sécurisées plus tard)
 // Route spécifique AVANT apiResource pour éviter les conflits de routage
@@ -155,6 +157,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/support-tickets/mark-seen', [SupportTicketController::class, 'markSeen']); // super admin : marquer tout comme lu
     Route::get('/support-tickets', [SupportTicketController::class, 'index']); // liste (super admin = tous, autres = store courant)
     Route::put('/support-tickets/{id}', [SupportTicketController::class, 'update']); // mise à jour (super admin)
+    Route::get('/demo-requests', [DemoRequestController::class, 'index']); // super admin: liste des demandes demo
+    Route::post('/demo-requests/{id}/mark-read', [DemoRequestController::class, 'markAsRead']); // super admin: marquer une demande comme lue
 
     // Messagerie interne : fil d'actualité de l'établissement (visible par tous les employés)
     Route::get('/internal-messages/feed', [InternalMessageController::class, 'feed']);
