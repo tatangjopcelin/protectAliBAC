@@ -32,10 +32,6 @@
       <td>{{ $demoRequest->profile ?: '-' }}</td>
     </tr>
     <tr>
-      <td><strong>Message</strong></td>
-      <td>{{ $demoRequest->message ?: '-' }}</td>
-    </tr>
-    <tr>
       <td><strong>Date</strong></td>
       <td>{{ $demoRequest->created_at?->format('d/m/Y H:i') }}</td>
     </tr>
