@@ -138,7 +138,7 @@ class AuthController extends Controller
                 // Champs utilisateur
                 'name' => 'required|string|max:255',
                 'email' => 'required|string|email|max:255',
-                'phone' => 'nullable|string|max:20',
+                'phone' => 'required|string|max:20',
                 'password' => 'required|string|min:8|confirmed',
                 'role' => 'nullable|string|in:admin,chef,cook,storekeeper,accountant,butcher,server,director,machine',
                 'zone_id' => 'nullable|integer|exists:zones,id',
@@ -190,7 +190,7 @@ class AuthController extends Controller
                 ['email' => $validated['email']],
                 [
                     'name' => $validated['name'],
-                    'phone' => $validated['phone'] ?? null,
+                    'phone' => $validated['phone'],
                     'password' => $validated['password'],
                     'role' => $role,
                     'zone_id' => $validated['zone_id'] ?? null,
