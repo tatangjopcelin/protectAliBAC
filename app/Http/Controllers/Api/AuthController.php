@@ -152,11 +152,8 @@ class AuthController extends Controller
                 'establishment_code' => 'nullable|required_if:registration_type,join_store|string|size:4|exists:stores,establishment_code',
             ]);
 
-            // Vérifier que l'email n'existe pas dans users OU pending_registrations
-            $emailExists = User::where('email', $validated['email'])->exists() 
-                || PendingRegistration::where('email', $validated['email'])->exists();
-            
-            if ($emailExists) {
+            // Compte déjà créé : seul cas où l'email est refusé
+            if (User::where('email', $validated['email'])->exists()) {
                 return response()->json([
                     'message' => 'Erreur de validation',
                     'errors' => [
@@ -185,23 +182,27 @@ class AuthController extends Controller
             $role = $validated['registration_type'] === 'create_store' 
                 ? 'admin' 
                 : ($validated['role'] ?? 'cook');
-            
-            // Stocker dans pending_registrations
-            $pendingRegistration = PendingRegistration::create([
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'phone' => $validated['phone'] ?? null,
-                'password' => $validated['password'],
-                'role' => $role,
-                'zone_id' => $validated['zone_id'] ?? null,
-                'email_verification_code' => $verificationCode,
-                'email_verification_code_expires_at' => Carbon::now()->addMinutes(15),
-                'registration_type' => $validated['registration_type'],
-                'store_name' => $validated['store_name'] ?? null,
-                'store_address' => $validated['store_address'] ?? null,
-                'store_phone' => $validated['store_phone'] ?? null,
-                'establishment_code' => $validated['establishment_code'] ?? null,
-            ]);
+
+            // Un seul enregistrement par email : mise à jour complète si inscription déjà en attente
+            $isPendingUpdate = PendingRegistration::where('email', $validated['email'])->exists();
+
+            $pendingRegistration = PendingRegistration::updateOrCreate(
+                ['email' => $validated['email']],
+                [
+                    'name' => $validated['name'],
+                    'phone' => $validated['phone'] ?? null,
+                    'password' => $validated['password'],
+                    'role' => $role,
+                    'zone_id' => $validated['zone_id'] ?? null,
+                    'email_verification_code' => $verificationCode,
+                    'email_verification_code_expires_at' => Carbon::now()->addMinutes(15),
+                    'registration_type' => $validated['registration_type'],
+                    'store_name' => $validated['store_name'] ?? null,
+                    'store_address' => $validated['store_address'] ?? null,
+                    'store_phone' => $validated['store_phone'] ?? null,
+                    'establishment_code' => $validated['establishment_code'] ?? null,
+                ]
+            );
 
             // Envoyer email de vérification
             $tempUser = new User();
@@ -210,11 +211,16 @@ class AuthController extends Controller
             $tempUser->email_verification_code = $pendingRegistration->email_verification_code;
             $tempUser->sendEmailVerificationNotification();
 
+            $message = $isPendingUpdate
+                ? 'Votre inscription a été mise à jour. Un nouveau code de vérification a été envoyé à votre email.'
+                : 'Un code de vérification a été envoyé à votre email.';
+
             return response()->json([
-                'message' => 'Un code de vérification a été envoyé à votre email.',
+                'message' => $message,
                 'email_sent' => true,
                 'email' => $pendingRegistration->email,
-            ], 201);
+                'pending_updated' => $isPendingUpdate,
+            ], $isPendingUpdate ? 200 : 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
                 'message' => 'Erreur de validation',
