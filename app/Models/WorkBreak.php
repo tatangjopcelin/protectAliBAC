@@ -40,13 +40,18 @@ class WorkBreak extends Model
      */
     public function calculateDuration(): int
     {
-        if (!$this->start_break || !$this->end_break) {
+        if (! $this->start_break || ! $this->end_break) {
             return 0;
         }
 
         $start = Carbon::parse($this->start_break);
         $end = Carbon::parse($this->end_break);
 
-        return max(0, $end->diffInMinutes($start));
+        if ($end->lte($start)) {
+            return 0;
+        }
+
+        // Secondes → minutes arrondies (évite 0 erroné selon l’ordre des arguments de diffInMinutes)
+        return max(0, (int) round($start->diffInSeconds($end) / 60));
     }
 }
