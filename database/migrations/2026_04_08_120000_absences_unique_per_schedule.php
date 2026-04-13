@@ -11,6 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // MySQL utilise l’unique (user_id, date) comme index pour la FK sur user_id : il faut un index sur user_id avant de le supprimer.
+        Schema::table('absences', function (Blueprint $table) {
+            $table->index('user_id');
+        });
+
         Schema::table('absences', function (Blueprint $table) {
             $table->dropUnique(['user_id', 'date']);
         });
@@ -28,6 +33,10 @@ return new class extends Migration
 
         Schema::table('absences', function (Blueprint $table) {
             $table->unique(['user_id', 'date']);
+        });
+
+        Schema::table('absences', function (Blueprint $table) {
+            $table->dropIndex(['user_id']);
         });
     }
 };
