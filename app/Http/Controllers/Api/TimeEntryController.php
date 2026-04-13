@@ -464,23 +464,13 @@ class TimeEntryController extends Controller
         $endTime = $clockOut->format('H:i');
 
         $breakDuration = null;
-        $startBreak = null;
-        $endBreak = null;
         if (isset($validated['break_duration']) && $validated['break_duration'] > 0) {
             $breakHours = floor($validated['break_duration']);
             $breakMinutes = round(($validated['break_duration'] - $breakHours) * 60);
             $breakDuration = sprintf('%02d:%02d', $breakHours, $breakMinutes);
-            // Placer la pause au centre du créneau pour l'affichage dans le planning
-            $startMinutes = $clockIn->hour * 60 + $clockIn->minute;
-            $endMinutes = $clockOut->hour * 60 + $clockOut->minute;
-            $breakTotalMinutes = $breakHours * 60 + $breakMinutes;
-            $workBeforeBreak = (int) (($endMinutes - $startMinutes - $breakTotalMinutes) / 2);
-            $breakStartMinutes = $startMinutes + $workBeforeBreak;
-            $breakEndMinutes = $breakStartMinutes + $breakTotalMinutes;
-            $startBreak = sprintf('%02d:%02d', (int) floor($breakStartMinutes / 60), $breakStartMinutes % 60);
-            $endBreak = sprintf('%02d:%02d', (int) floor($breakEndMinutes / 60), $breakEndMinutes % 60);
         }
 
+        // Durée de pause seule sur le planning (pas d’intervalle inventé) : l’UI affiche les minutes, pas des heures fictives.
         $schedule = Schedule::create([
             'user_id' => $validated['user_id'],
             'store_id' => $targetUser->store_id,
@@ -488,8 +478,8 @@ class TimeEntryController extends Controller
             'start_time' => $startTime,
             'end_time' => $endTime,
             'break_duration' => $breakDuration,
-            'start_break' => $startBreak,
-            'end_break' => $endBreak,
+            'start_break' => null,
+            'end_break' => null,
             'status' => 'confirmed',
             'notes' => 'Planning créé automatiquement à partir d\'un pointage manuel ajouté par ' . $user->name,
             'created_by' => $user->id,
