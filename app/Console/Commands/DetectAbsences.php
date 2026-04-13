@@ -12,7 +12,7 @@ class DetectAbsences extends Command
 {
     protected $signature = 'absences:detect {--date= : Date à traiter (Y-m-d), défaut = hier}';
 
-    protected $description = 'Détecte les absences : employés programmés qui n\'ont pas pointé le jour donné (à lancer le lendemain)';
+    protected $description = 'Détecte les absences : créneaux planifiés sans arrivée pointée (clock_in) pour ce planning';
 
     public function handle(): int
     {
@@ -30,11 +30,12 @@ class DetectAbsences extends Command
 
         $created = 0;
         foreach ($schedules as $schedule) {
-            $hasEntry = TimeEntry::where('user_id', $schedule->user_id)
-                ->whereDate('date', $dateStr)
+            // Présent dès l’arrivée sur ce créneau (lié au schedule_id), départ non requis
+            $hasArrival = TimeEntry::where('schedule_id', $schedule->id)
+                ->whereNotNull('clock_in')
                 ->exists();
 
-            if (!$hasEntry) {
+            if (! $hasArrival) {
                 Absence::firstOrCreate(
                     [
                         'user_id' => $schedule->user_id,

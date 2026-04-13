@@ -80,7 +80,8 @@ class AbsenceController extends Controller
     }
 
     /**
-     * Absences calculées automatiquement : créneaux planifiés non pointés dont fin + 1h est dépassée.
+     * Absences calculées automatiquement : créneaux planifiés sans arrivée pointée (clock_in),
+     * dont la fin réelle du créneau + 1h est dépassée (créneaux après minuit : fin sur le jour suivant).
      * GET ?start_date=Y-m-d&end_date=Y-m-d&user_id= (optionnel)
      * Retourne : { items: [{ date, schedule_id, planned_hours }, ...], total_count, total_hours }
      */
@@ -116,17 +117,21 @@ class AbsenceController extends Controller
 
         foreach ($schedules as $schedule) {
             $dateStr = $schedule->date->format('Y-m-d');
+            $startDt = Carbon::parse($dateStr.' '.$this->normalizeTime($schedule->start_time));
             $endDateTime = Carbon::parse($dateStr.' '.$this->normalizeTime($schedule->end_time));
+            if ($endDateTime->lte($startDt)) {
+                $endDateTime->addDay();
+            }
             $deadline = $endDateTime->copy()->addHour();
             if ($now->lt($deadline)) {
                 continue;
             }
 
-            $hasCompletedPunch = TimeEntry::where('schedule_id', $schedule->id)
+            // Présent dès l’arrivée pointée : pas besoin de clock_out
+            $hasClockIn = TimeEntry::where('schedule_id', $schedule->id)
                 ->whereNotNull('clock_in')
-                ->whereNotNull('clock_out')
                 ->exists();
-            if ($hasCompletedPunch) {
+            if ($hasClockIn) {
                 continue;
             }
 
