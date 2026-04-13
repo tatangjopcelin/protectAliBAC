@@ -260,6 +260,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/absences/computed', [AbsenceController::class, 'computed']);
     Route::get('/absences', [AbsenceController::class, 'index']);
     Route::put('/absences/{id}', [AbsenceController::class, 'update']);
+    Route::delete('/absences/{id}', [AbsenceController::class, 'destroy']);
     
     // Routes pour les pointages (doivent être définies AVANT apiResource)
     Route::post('/time-entries/send-clock-in-code', [TimeEntryController::class, 'sendClockInCode']); // Envoyer code de vérification

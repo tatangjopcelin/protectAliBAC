@@ -38,11 +38,11 @@ class DetectAbsences extends Command
             if (! $hasArrival) {
                 Absence::firstOrCreate(
                     [
-                        'user_id' => $schedule->user_id,
-                        'date' => $dateStr,
+                        'schedule_id' => $schedule->id,
                     ],
                     [
-                        'schedule_id' => $schedule->id,
+                        'user_id' => $schedule->user_id,
+                        'date' => $dateStr,
                         'store_id' => $schedule->store_id,
                     ]
                 );

@@ -8,6 +8,7 @@ use App\Models\Schedule;
 use App\Models\TimeEntry;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class AbsenceController extends Controller
 {
@@ -80,6 +81,49 @@ class AbsenceController extends Controller
     }
 
     /**
+     * Supprime l'absence puis le créneau planifié lié. Les pointages sur ce créneau sont supprimés en cascade.
+     */
+    public function destroy(Request $request, string $id)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['message' => 'Non authentifié'], 401);
+        }
+        if (! $user->hasSharedPermission('planning') && ! $user->isAdmin()) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        $absence = Absence::where('id', $id)->firstOrFail();
+        if ($user->store_id && $absence->store_id !== $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+
+        try {
+            DB::transaction(function () use ($absence, $user) {
+                $scheduleId = $absence->schedule_id;
+                $absence->delete();
+
+                if ($scheduleId) {
+                    $schedule = Schedule::where('id', $scheduleId)->first();
+                    if ($schedule) {
+                        if ($user->store_id && $schedule->store_id !== $user->store_id) {
+                            throw new \RuntimeException('store_mismatch');
+                        }
+                        $schedule->delete();
+                    }
+                }
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() === 'store_mismatch') {
+                return response()->json(['message' => 'Accès refusé'], 403);
+            }
+            throw $e;
+        }
+
+        return response()->json(['message' => 'Absence et créneau associé supprimés'], 200);
+    }
+
+    /**
      * Absences calculées automatiquement : créneaux planifiés sans arrivée pointée (clock_in),
      * dont la fin réelle du créneau + 1h est dépassée (créneaux après minuit : fin sur le jour suivant).
      * GET ?start_date=Y-m-d&end_date=Y-m-d&user_id= (optionnel)
@@ -136,14 +180,14 @@ class AbsenceController extends Controller
             }
 
             $plannedHours = $this->schedulePlannedHours($schedule);
-            // Enregistrer l'absence en base (une par user/date) pour que l'admin puisse la marquer justifiée depuis la grille
+            // Une absence par créneau (schedule) pour affichage / actions dans la grille
             $absence = Absence::firstOrCreate(
+                [
+                    'schedule_id' => $schedule->id,
+                ],
                 [
                     'user_id' => $schedule->user_id,
                     'date' => $dateStr,
-                ],
-                [
-                    'schedule_id' => $schedule->id,
                     'store_id' => $schedule->store_id,
                 ]
             );
