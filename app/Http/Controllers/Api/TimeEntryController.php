@@ -599,41 +599,28 @@ class TimeEntryController extends Controller
             $proposedClockOut = Carbon::parse($proposedClockOut);
         }
         
-        // Calculer les heures planifiées
+        // Calculer la durée planifiée brute (début -> fin, pause incluse)
         $scheduledStart = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->start_time);
         $scheduledEnd = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->end_time);
-        
-        // Calculer la durée planifiée en heures (sans les pauses)
-        $scheduledHours = $scheduledEnd->diffInMinutes($scheduledStart) / 60;
-        if ($schedule->start_break && $schedule->end_break) {
-            $breakStart = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->start_break);
-            $breakEnd = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->end_break);
-            $breakHours = $breakEnd->diffInMinutes($breakStart) / 60;
-            $scheduledHours -= $breakHours;
+        if ($scheduledEnd->lte($scheduledStart)) {
+            // Créneau à cheval sur minuit
+            $scheduledEnd->addDay();
         }
+        $scheduledHours = $scheduledStart->diffInMinutes($scheduledEnd) / 60;
         
         // Calculer les heures travaillées jusqu'à maintenant
         $clockIn = Carbon::parse($timeEntry->clock_in);
         $actualHours = $proposedClockOut->diffInMinutes($clockIn) / 60;
-        
-        // Soustraire les pauses
-        if ($timeEntry->break_duration) {
-            $actualHours -= $timeEntry->break_duration;
-        }
+        $actualHours = max(0, $actualHours);
         
         // Calculer les heures supplémentaires
         $overtimeHours = max(0, $actualHours - $scheduledHours);
         
         // Si les heures supplémentaires dépassent la limite
         if ($overtimeHours > $user->max_overtime_hours) {
-            // Calculer l'heure de sortie maximale autorisée
+            // Sortie auto = arrivée réelle + (durée planning brute + heures sup autorisées)
             $maxAllowedHours = $scheduledHours + $user->max_overtime_hours;
-            
-            // Ajouter les pauses
-            if ($timeEntry->break_duration) {
-                $maxAllowedHours += $timeEntry->break_duration;
-            }
-            
+
             // Calculer l'heure de sortie automatique
             $autoClockOutTime = $clockIn->copy()->addHours($maxAllowedHours);
             

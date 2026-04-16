@@ -14,17 +14,6 @@ use Illuminate\Support\Facades\Log;
 class OvertimeCheckService
 {
     /**
-     * break_duration est stocké en minutes dans time_entries (voir BreakController, TimeEntryController).
-     */
-    private static function breakDurationInHours(TimeEntry $entry): float
-    {
-        if (!$entry->break_duration) {
-            return 0;
-        }
-        return (float) $entry->break_duration / 60;
-    }
-
-    /**
      * Exécute la vérification pour tous les pointages en cours (aujourd'hui).
      * Retourne le nombre de pointages complétés automatiquement.
      */
@@ -62,8 +51,11 @@ class OvertimeCheckService
 
             $scheduledStart = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->start_time);
             $scheduledEnd = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->end_time);
-            // Utiliser abs() pour garantir une valeur positive même si l'ordre est inversé
-            $scheduledHours = abs($scheduledEnd->diffInMinutes($scheduledStart)) / 60;
+            if ($scheduledEnd->lte($scheduledStart)) {
+                // Créneau à cheval sur minuit
+                $scheduledEnd->addDay();
+            }
+            $scheduledHours = $scheduledStart->diffInMinutes($scheduledEnd) / 60;
             
             Log::info("Calcul durée programmée", [
                 'entry_id' => $entry->id,
@@ -74,13 +66,6 @@ class OvertimeCheckService
                 'scheduled_end_parsed' => $scheduledEnd->format('Y-m-d H:i:s'),
                 'scheduled_hours' => $scheduledHours,
             ]);
-            if ($schedule->start_break && $schedule->end_break) {
-                $breakStart = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->start_break);
-                $breakEnd = Carbon::parse($schedule->date->format('Y-m-d') . ' ' . $schedule->end_break);
-                $breakHours = abs($breakEnd->diffInMinutes($breakStart)) / 60;
-                $scheduledHours -= $breakHours;
-            }
-
             // Ne jamais clôturer si la durée programmée est nulle ou négative (planning invalide)
             if ($scheduledHours <= 0) {
                 Log::info("Pointage ignoré: durée programmée invalide", [
@@ -107,10 +92,8 @@ class OvertimeCheckService
                 continue;
             }
 
-            // Utiliser abs() pour garantir une valeur positive (problème de fuseau horaire possible)
+            // Durée écoulée depuis l'arrivée réelle (ne déduit pas la pause pour le seuil auto)
             $actualHours = abs($now->diffInMinutes($clockIn)) / 60;
-            $actualHours -= self::breakDurationInHours($entry);
-            // S'assurer que actualHours reste positif (les pauses ne peuvent pas dépasser le temps travaillé)
             $actualHours = max(0, $actualHours);
 
             // Heures sup = temps travaillé au-delà de la durée programmée
@@ -123,7 +106,6 @@ class OvertimeCheckService
                 'now' => $now->format('Y-m-d H:i:s'),
                 'scheduled_hours' => $scheduledHours,
                 'actual_hours' => $actualHours,
-                'break_hours' => self::breakDurationInHours($entry),
                 'overtime_hours' => $overtimeHours,
                 'max_overtime_hours' => $user->max_overtime_hours,
                 'should_close' => $overtimeHours > $user->max_overtime_hours ? 'yes' : 'no',
@@ -141,8 +123,6 @@ class OvertimeCheckService
             }
 
             $maxAllowedHours = $scheduledHours + $user->max_overtime_hours;
-            $maxAllowedHours += self::breakDurationInHours($entry);
-
             $autoClockOutTime = $clockIn->copy()->addHours($maxAllowedHours);
 
             $entry->clock_out = $autoClockOutTime;
