@@ -83,15 +83,26 @@ class NotificationService
         }
 
         $sent = false;
+        $badgeCount = Notification::where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->count();
+        $payloadData = array_merge($data, ['badge_count' => $badgeCount]);
 
-        // Notification Push : pas de push pour support-tickets ni pour broadcast "admins uniquement" ; push pour "tous employés"
-        $noPushChannels = ['support_ticket_new', 'super_admin_broadcast'];
-        $pushForAllRoles = $channel === 'super_admin_broadcast_all';
-        $maySendPush = $preference->push_enabled && in_array($type, ['push', 'all'])
-            && !in_array($channel, $noPushChannels, true)
-            && ($pushForAllRoles || in_array($user->role, ['admin', 'super_admin'], true));
+        // Web Push PWA: toujours tenter l'envoi pour mettre à jour le badge hors app,
+        // quel que soit le rôle, le canal ou le type de notification.
+        try {
+            $this->webPushService->sendToUser($user, $title, $message, $payloadData);
+            if ($user->webPushSubscriptions()->exists()) {
+                $sent = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Envoi web push échoué', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+        }
+
+        // Notification Push (APNs/FCM) sur appareils natifs si activée.
+        $maySendPush = $preference->push_enabled && in_array($type, ['push', 'all'], true);
         if ($maySendPush) {
-            $sent = $this->sendPushNotification($user, $title, $message, $data) || $sent;
+            $sent = $this->sendPushNotification($user, $title, $message, $payloadData) || $sent;
         }
 
         // Notification Email (sauf canaux où un email dédié est déjà envoyé)
@@ -118,22 +129,17 @@ class NotificationService
      */
     private function sendPushNotification(User $user, string $title, string $message, array $data = []): bool
     {
-        $badgeCount = Notification::where('user_id', $user->id)
-            ->whereNull('read_at')
-            ->count();
-        $payloadData = array_merge($data, ['badge_count' => $badgeCount]);
-
         $tokens = PushToken::where('user_id', $user->id)->get();
         $sent = false;
 
         foreach ($tokens as $pushToken) {
             try {
                 if ($pushToken->platform === 'ios') {
-                    if ($this->apnService->send($pushToken->token, $title, $message, $payloadData)) {
+                    if ($this->apnService->send($pushToken->token, $title, $message, $data)) {
                         $sent = true;
                     }
                 } elseif ($pushToken->platform === 'android' && $this->fcmService->isConfigured()) {
-                    if ($this->fcmService->send($pushToken->token, $title, $message, $payloadData)) {
+                    if ($this->fcmService->send($pushToken->token, $title, $message, $data)) {
                         $sent = true;
                     }
                 }
@@ -141,16 +147,6 @@ class NotificationService
                 Log::warning('Envoi push échoué', ['user_id' => $user->id, 'platform' => $pushToken->platform, 'error' => $e->getMessage()]);
             }
         }
-
-        try {
-            $this->webPushService->sendToUser($user, $title, $message, $payloadData);
-            if ($user->webPushSubscriptions()->exists()) {
-                $sent = true;
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Envoi web push échoué', ['user_id' => $user->id, 'error' => $e->getMessage()]);
-        }
-
         return $sent;
     }
 
