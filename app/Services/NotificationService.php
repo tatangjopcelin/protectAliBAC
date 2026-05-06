@@ -85,7 +85,7 @@ class NotificationService
         $sent = false;
 
         // Notification Push : pas de push pour support-tickets ni pour broadcast "admins uniquement" ; push pour "tous employés"
-        $noPushChannels = ['support_ticket_new', 'support_ticket_reply', 'super_admin_broadcast'];
+        $noPushChannels = ['support_ticket_new', 'super_admin_broadcast'];
         $pushForAllRoles = $channel === 'super_admin_broadcast_all';
         $maySendPush = $preference->push_enabled && in_array($type, ['push', 'all'])
             && !in_array($channel, $noPushChannels, true)
