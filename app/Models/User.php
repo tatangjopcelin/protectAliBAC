@@ -184,6 +184,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(PushToken::class);
     }
 
+    public function webPushSubscriptions(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(WebPushSubscription::class);
+    }
+
     public function zone(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Zone::class);

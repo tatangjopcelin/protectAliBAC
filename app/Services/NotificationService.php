@@ -16,7 +16,8 @@ class NotificationService
     public function __construct(
         private readonly ApnService $apnService,
         private readonly FcmService $fcmService,
-        private readonly SmsService $smsService
+        private readonly SmsService $smsService,
+        private readonly WebPushService $webPushService
     ) {}
 
     /**
@@ -117,19 +118,22 @@ class NotificationService
      */
     private function sendPushNotification(User $user, string $title, string $message, array $data = []): bool
     {
+        $badgeCount = Notification::where('user_id', $user->id)
+            ->whereNull('read_at')
+            ->count();
+        $payloadData = array_merge($data, ['badge_count' => $badgeCount]);
+
         $tokens = PushToken::where('user_id', $user->id)->get();
-        if ($tokens->isEmpty()) {
-            return false;
-        }
         $sent = false;
+
         foreach ($tokens as $pushToken) {
             try {
                 if ($pushToken->platform === 'ios') {
-                    if ($this->apnService->send($pushToken->token, $title, $message, $data)) {
+                    if ($this->apnService->send($pushToken->token, $title, $message, $payloadData)) {
                         $sent = true;
                     }
                 } elseif ($pushToken->platform === 'android' && $this->fcmService->isConfigured()) {
-                    if ($this->fcmService->send($pushToken->token, $title, $message, $data)) {
+                    if ($this->fcmService->send($pushToken->token, $title, $message, $payloadData)) {
                         $sent = true;
                     }
                 }
@@ -137,6 +141,16 @@ class NotificationService
                 Log::warning('Envoi push échoué', ['user_id' => $user->id, 'platform' => $pushToken->platform, 'error' => $e->getMessage()]);
             }
         }
+
+        try {
+            $this->webPushService->sendToUser($user, $title, $message, $payloadData);
+            if ($user->webPushSubscriptions()->exists()) {
+                $sent = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Envoi web push échoué', ['user_id' => $user->id, 'error' => $e->getMessage()]);
+        }
+
         return $sent;
     }
 

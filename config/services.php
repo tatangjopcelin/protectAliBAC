@@ -75,4 +75,16 @@ return [
         'from' => env('TWILIO_FROM'), // ex. +33600000000 ou numéro Twilio
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Web Push (PWA iOS/Android/Desktop)
+    |--------------------------------------------------------------------------
+    | Clés VAPID pour envoi push navigateur via Service Worker.
+    */
+    'webpush' => [
+        'public_key' => env('VAPID_PUBLIC_KEY'),
+        'private_key' => env('VAPID_PRIVATE_KEY'),
+        'subject' => env('VAPID_SUBJECT', 'mailto:admin@brole.store'),
+    ],
+
 ];

@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\AbsenceController;
 use App\Http\Controllers\Api\AccountSettingsController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\PushTokenController;
+use App\Http\Controllers\Api\WebPushSubscriptionController;
 use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\InternalMessageController;
@@ -48,6 +49,8 @@ Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum')
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/push-tokens', [PushTokenController::class, 'store']);
     Route::post('/push-tokens/send-test', [PushTokenController::class, 'sendTest']);
+    Route::post('/web-push/subscribe', [WebPushSubscriptionController::class, 'store']);
+    Route::delete('/web-push/subscribe', [WebPushSubscriptionController::class, 'destroy']);
 });
 
 // Routes pour les paramètres de compte
@@ -76,6 +79,7 @@ Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])
 Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name('password.forgot');
 Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
 Route::post('/demo-requests', [DemoRequestController::class, 'store']); // Demande de demo (public)
+Route::get('/web-push/public-key', [WebPushSubscriptionController::class, 'publicKey']);
 
 // Routes publiques (peut être sécurisées plus tard)
 // Route spécifique AVANT apiResource pour éviter les conflits de routage

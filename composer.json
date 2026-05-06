@@ -13,6 +13,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "lcobucci/jwt": "^4.0",
+        "minishlink/web-push": "^10.0",
         "openai-php/laravel": "^0.18.0",
         "twilio/sdk": "^8.11"
     },
