@@ -179,6 +179,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('orders', OrderController::class);
     Route::post('/orders/generate', [OrderController::class, 'generate']); // Générer une commande automatique
     Route::post('/orders/{id}/send-to-supplier', [OrderController::class, 'sendToSupplier']);
+    Route::post('/orders/{id}/complete-delivery', [OrderController::class, 'completeDelivery']);
     Route::get('/products/{productId}/compare-prices', [OrderController::class, 'comparePrices']); // Comparer les prix fournisseurs
 });
 Route::get('/supplier-orders/token/{token}', [OrderController::class, 'supplierShowByToken']); // Vue publique fournisseur via token

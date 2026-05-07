@@ -22,8 +22,7 @@ class OrderPolicy
      */
     public function view(User $user, Order $order): bool
     {
-        // Admin, Chef, Magasinier, Comptable peuvent voir une commande
-        return $user->isAdmin() || $user->isChef() || $user->isStorekeeper() || $user->isAccountant();
+        return $user->isAdmin() || $user->isChef() || $user->isDirector() || $user->isStorekeeper() || $user->isAccountant();
     }
 
     /**
@@ -40,8 +39,8 @@ class OrderPolicy
      */
     public function update(User $user, Order $order): bool
     {
-        // Admin, Chef, Magasinier peuvent modifier les commandes
-        return $user->isAdmin() || $user->isChef() || $user->isStorekeeper();
+        // Admin, Chef, Directeur, Magasinier peuvent modifier les commandes
+        return $user->isAdmin() || $user->isChef() || $user->isDirector() || $user->isStorekeeper();
     }
 
     /**

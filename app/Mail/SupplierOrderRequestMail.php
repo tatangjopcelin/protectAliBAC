@@ -28,8 +28,17 @@ class SupplierOrderRequestMail extends Mailable
 
     public function content(): Content
     {
+        $this->order->loadMissing(['store', 'items', 'supplier']);
+
+        $establishmentContacts = $this->order->store
+            ? $this->order->store->supplierOrderContactsPayload()
+            : ['store' => null, 'staff' => []];
+
         return new Content(
             view: 'emails.supplier-order-request',
+            with: [
+                'establishmentContacts' => $establishmentContacts,
+            ],
         );
     }
 }

@@ -23,6 +23,11 @@ class Order extends Model
         'supplier_token_expires_at',
         'supplier_responded_at',
         'supplier_response_note',
+        'supplier_confirmation_note',
+        'delivery_photo',
+        'supplier_delivery_signature',
+        'establishment_delivery_signature',
+        'delivery_received_by_user_id',
     ];
 
     protected $casts = [
@@ -52,5 +57,10 @@ class Order extends Model
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
+    }
+
+    public function deliveryReceivedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'delivery_received_by_user_id');
     }
 }
