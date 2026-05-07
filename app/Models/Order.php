@@ -22,6 +22,7 @@ class Order extends Model
         'supplier_token',
         'supplier_token_expires_at',
         'supplier_responded_at',
+        'supplier_response_seen_at',
         'supplier_response_note',
         'supplier_confirmation_note',
         'delivery_photo',
@@ -37,6 +38,7 @@ class Order extends Model
         'total_amount' => 'decimal:2',
         'supplier_token_expires_at' => 'datetime',
         'supplier_responded_at' => 'datetime',
+        'supplier_response_seen_at' => 'datetime',
     ];
 
     public function supplier(): BelongsTo

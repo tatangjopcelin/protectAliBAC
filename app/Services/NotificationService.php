@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Notification;
 use App\Models\NotificationPreference;
+use App\Models\Order;
 use App\Models\PushToken;
 use App\Models\User;
 use App\Models\Product;
@@ -76,6 +77,7 @@ class NotificationService
                     'support_ticket_reply',
                     'super_admin_broadcast',
                     'super_admin_broadcast_all',
+                    'supplier_order_response',
                 ], true),
                 'whatsapp_enabled' => false,
                 'severity_level' => 'all'
@@ -197,6 +199,63 @@ class NotificationService
         // La notification est déjà créée dans sendNotification
         // TODO: Intégrer avec WhatsApp Business API
         return true;
+    }
+
+    /**
+     * Notifie les responsables de l'établissement lorsque le fournisseur confirme ou refuse une commande (lien e-mail).
+     */
+    public function notifySupplierOrderResponse(Order $order, string $decision): void
+    {
+        $storeId = $order->store_id;
+        if (! $storeId) {
+            return;
+        }
+
+        if (! $order->relationLoaded('supplier')) {
+            $order->load('supplier');
+        }
+
+        $supplierName = $order->supplier?->name ?? 'Fournisseur';
+        $orderNum = $order->order_number ?? (string) $order->id;
+
+        $confirmed = $decision === 'confirmed';
+        $title = $confirmed
+            ? 'Commande confirmée par le fournisseur'
+            : 'Commande refusée par le fournisseur';
+
+        $message = $confirmed
+            ? "Le fournisseur « {$supplierName} » a confirmé la commande {$orderNum}."
+            : "Le fournisseur « {$supplierName} » a refusé la commande {$orderNum}.";
+
+        $users = User::query()
+            ->where('store_id', $storeId)
+            ->whereIn('role', ['admin', 'chef', 'director'])
+            ->whereNotNull('email_verified_at')
+            ->get();
+
+        foreach ($users as $user) {
+            try {
+                $this->sendNotification(
+                    $user,
+                    'supplier_order_response',
+                    $title,
+                    $message,
+                    [
+                        'order_id' => $order->id,
+                        'order_number' => $orderNum,
+                        'decision' => $decision,
+                        'route' => '/tabs/supplier-orders',
+                        'screen' => 'supplier_orders',
+                    ],
+                    'all'
+                );
+            } catch (\Throwable $e) {
+                Log::warning('notifySupplierOrderResponse utilisateur échoué', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**

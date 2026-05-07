@@ -7,6 +7,7 @@ use App\Mail\SupplierOrderRequestMail;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Store;
+use App\Services\NotificationService;
 use App\Services\OrderService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
@@ -22,8 +23,10 @@ class OrderController extends Controller
 {
     protected $orderService;
 
-    public function __construct(OrderService $orderService)
-    {
+    public function __construct(
+        OrderService $orderService,
+        protected NotificationService $notificationService
+    ) {
         $this->orderService = $orderService;
     }
 
@@ -204,7 +207,9 @@ class OrderController extends Controller
                     'supplier_token' => null,
                     'supplier_token_expires_at' => null,
                     'supplier_responded_at' => null,
+                    'supplier_response_seen_at' => null,
                     'supplier_response_note' => null,
+                    'supplier_confirmation_note' => null,
                     'total_amount' => 0,
                 ]);
 
@@ -318,6 +323,53 @@ class OrderController extends Controller
             'message' => 'Livraison enregistrée.',
             'order' => $order,
         ]);
+    }
+
+    /**
+     * Badge tableau de bord : réponses fournisseur pas encore consultées par l'établissement.
+     */
+    public function unseenSupplierResponsesCount(Request $request)
+    {
+        $user = $request->user();
+        if (! $user || ! $user->store_id) {
+            return response()->json(['count' => 0]);
+        }
+        if (! $user->isAdmin() && ! $user->isChef() && ! $user->isDirector()) {
+            return response()->json(['count' => 0]);
+        }
+
+        $count = Order::query()
+            ->where('store_id', $user->store_id)
+            ->whereNotNull('supplier_responded_at')
+            ->whereNull('supplier_response_seen_at')
+            ->whereIn('status', ['confirmed', 'cancelled'])
+            ->count();
+
+        return response()->json(['count' => $count]);
+    }
+
+    /**
+     * Marque les réponses fournisseur comme vues (ex. ouverture de l'écran commandes fournisseurs).
+     */
+    public function acknowledgeSupplierResponses(Request $request)
+    {
+        $user = $request->user();
+        if (! $user || ! $user->store_id) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+        if (! $user->isAdmin() && ! $user->isChef() && ! $user->isDirector()) {
+            return response()->json(['message' => 'Accès refusé'], 403);
+        }
+        $this->authorize('viewAny', Order::class);
+
+        Order::query()
+            ->where('store_id', $user->store_id)
+            ->whereNotNull('supplier_responded_at')
+            ->whereNull('supplier_response_seen_at')
+            ->whereIn('status', ['confirmed', 'cancelled'])
+            ->update(['supplier_response_seen_at' => now()]);
+
+        return response()->json(['message' => 'Ok']);
     }
 
     public function generate(Request $request)
@@ -511,6 +563,7 @@ class OrderController extends Controller
             $order->update([
                 'status' => 'cancelled',
                 'supplier_responded_at' => now(),
+                'supplier_response_seen_at' => null,
                 'supplier_response_note' => $refusalNote,
                 'supplier_token' => null,
                 'supplier_token_expires_at' => null,
@@ -519,6 +572,7 @@ class OrderController extends Controller
             $order->update([
                 'status' => 'confirmed',
                 'supplier_responded_at' => now(),
+                'supplier_response_seen_at' => null,
                 'supplier_confirmation_note' => $confirmationNote !== '' ? $confirmationNote : null,
                 'supplier_token' => null,
                 'supplier_token_expires_at' => null,
@@ -526,6 +580,15 @@ class OrderController extends Controller
         }
 
         $freshOrder = $order->fresh(['supplier', 'store', 'items']);
+
+        try {
+            $this->notificationService->notifySupplierOrderResponse($freshOrder, $decision);
+        } catch (\Throwable $e) {
+            Log::warning('notifySupplierOrderResponse échoué', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         if (! $request->expectsJson()) {
             if ($decision === 'confirmed') {

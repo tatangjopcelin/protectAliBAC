@@ -176,6 +176,8 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // Routes pour les commandes fournisseurs (auth obligatoire)
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/orders/unseen-supplier-responses-count', [OrderController::class, 'unseenSupplierResponsesCount']);
+    Route::post('/orders/acknowledge-supplier-responses', [OrderController::class, 'acknowledgeSupplierResponses']);
     Route::apiResource('orders', OrderController::class);
     Route::post('/orders/generate', [OrderController::class, 'generate']); // Générer une commande automatique
     Route::post('/orders/{id}/send-to-supplier', [OrderController::class, 'sendToSupplier']);
