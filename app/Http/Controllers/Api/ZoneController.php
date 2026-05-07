@@ -49,11 +49,11 @@ class ZoneController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seul l'admin peut créer des zones
-        if (!$user->isAdmin()) {
+        $allowedRoles = ['admin', 'director', 'chef'];
+        if (!in_array($user->role, $allowedRoles, true)) {
             return response()->json([
                 'message' => 'Accès refusé',
-                'error' => 'Seul l\'administrateur peut créer des zones de stockage'
+                'error' => 'Seuls admin, directeur et chef peuvent créer des zones de stockage'
             ], 403);
         }
 
@@ -64,13 +64,14 @@ class ZoneController extends Controller
             'shelf' => 'nullable|string|max:255',
             'bin' => 'nullable|string|max:255',
             'temperature' => 'nullable|numeric',
+            'image_url' => 'nullable|string|max:2048',
             'is_active' => 'nullable|boolean',
         ]);
 
         $validated['store_id'] = $user->store_id; // Forcer le store_id de l'utilisateur
         
         // Nettoyer les données : convertir les chaînes vides en null pour les champs nullable
-        foreach (['type', 'description', 'shelf', 'bin'] as $field) {
+        foreach (['type', 'description', 'shelf', 'bin', 'image_url'] as $field) {
             if (isset($validated[$field]) && $validated[$field] === '') {
                 $validated[$field] = null;
             }
@@ -159,6 +160,7 @@ class ZoneController extends Controller
             'shelf' => 'nullable|string|max:255',
             'bin' => 'nullable|string|max:255',
             'temperature' => 'nullable|numeric',
+            'image_url' => 'nullable|string|max:2048',
             'is_active' => 'nullable|boolean',
         ]);
 
@@ -225,6 +227,14 @@ class ZoneController extends Controller
         $user = $request->user();
         if (!$user) {
             return response()->json(['message' => 'Non authentifié'], 401);
+        }
+
+        $allowedRoles = ['admin', 'director', 'chef'];
+        if (!in_array($user->role, $allowedRoles, true)) {
+            return response()->json([
+                'message' => 'Accès refusé',
+                'error' => 'Seuls admin, directeur et chef peuvent modifier la température'
+            ], 403);
         }
 
         $zone = Zone::where('id', $id);

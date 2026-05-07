@@ -16,6 +16,7 @@ class Zone extends Model
         'shelf',
         'bin',
         'temperature',
+        'image_url',
         'is_active',
     ];
 
