@@ -174,10 +174,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/internal-messages/{id}', [InternalMessageController::class, 'destroy']);
 });
 
-// Routes pour les commandes fournisseurs
-Route::apiResource('orders', OrderController::class);
-Route::post('/orders/generate', [OrderController::class, 'generate']); // Générer une commande automatique
-Route::get('/products/{productId}/compare-prices', [OrderController::class, 'comparePrices']); // Comparer les prix fournisseurs
+// Routes pour les commandes fournisseurs (auth obligatoire)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::apiResource('orders', OrderController::class);
+    Route::post('/orders/generate', [OrderController::class, 'generate']); // Générer une commande automatique
+    Route::post('/orders/{id}/send-to-supplier', [OrderController::class, 'sendToSupplier']);
+    Route::get('/products/{productId}/compare-prices', [OrderController::class, 'comparePrices']); // Comparer les prix fournisseurs
+});
+Route::get('/supplier-orders/token/{token}', [OrderController::class, 'supplierShowByToken']); // Vue publique fournisseur via token
+Route::get('/supplier-orders/token/{token}/respond/{decision}', [OrderController::class, 'supplierRespondByToken']); // Réponse publique fournisseur via token
+Route::post('/supplier-orders/token/{token}/respond/{decision}', [OrderController::class, 'supplierRespondByToken']); // Réponse fournisseur avec motif via formulaire
 
 // Routes pour l'IA & Recommandations (tous les utilisateurs authentifiés)
 Route::middleware('auth:sanctum')->group(function () {

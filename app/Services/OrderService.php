@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -14,18 +15,20 @@ class OrderService
     /**
      * Génère automatiquement une commande basée sur les produits en stock bas
      */
-    public function generateOrderForSupplier(int $supplierId, array $productIds = []): Order
+    public function generateOrderForSupplier(int $supplierId, array $productIds = [], User $user): Order
     {
         $supplier = Supplier::findOrFail($supplierId);
 
         // Si aucun produit spécifié, prendre tous les produits de ce fournisseur en stock bas
         if (empty($productIds)) {
             $products = Product::where('supplier_id', $supplierId)
+                ->where('store_id', $user->store_id)
                 ->where('is_active', true)
                 ->whereColumn('quantity', '<=', 'min_quantity')
                 ->get();
         } else {
             $products = Product::where('supplier_id', $supplierId)
+                ->where('store_id', $user->store_id)
                 ->whereIn('id', $productIds)
                 ->where('is_active', true)
                 ->get();
@@ -38,6 +41,8 @@ class OrderService
         // Créer la commande
         $order = Order::create([
             'supplier_id' => $supplierId,
+            'store_id' => $user->store_id,
+            'user_id' => $user->id,
             'order_number' => $this->generateOrderNumber(),
             'status' => 'draft',
             'order_date' => Carbon::today(),
@@ -99,15 +104,19 @@ class OrderService
     /**
      * Compare les prix entre différents fournisseurs pour un produit
      */
-    public function compareSupplierPrices(int $productId): array
+    public function compareSupplierPrices(int $productId, int $storeId): array
     {
-        $product = Product::findOrFail($productId);
+        $product = Product::where('id', $productId)
+            ->where('store_id', $storeId)
+            ->firstOrFail();
 
         // Trouver tous les fournisseurs qui ont ce produit
-        $suppliers = Supplier::whereHas('products', function ($query) use ($productId) {
+        $suppliers = Supplier::whereHas('products', function ($query) use ($productId, $storeId) {
             $query->where('products.id', $productId);
-        })->with(['products' => function ($query) use ($productId) {
+            $query->where('products.store_id', $storeId);
+        })->with(['products' => function ($query) use ($productId, $storeId) {
             $query->where('products.id', $productId);
+            $query->where('products.store_id', $storeId);
         }])->get();
 
         $comparison = [];
@@ -120,7 +129,7 @@ class OrderService
                     'supplier_name' => $supplier->name,
                     'price' => $supplierProduct->purchase_price,
                     'unit' => $supplierProduct->unit,
-                    'last_order_date' => $this->getLastOrderDate($supplier->id, $productId),
+                    'last_order_date' => $this->getLastOrderDate($supplier->id, $productId, $storeId),
                 ];
             }
         }
@@ -136,9 +145,10 @@ class OrderService
     /**
      * Récupère la date de la dernière commande pour un produit d'un fournisseur
      */
-    private function getLastOrderDate(int $supplierId, int $productId): ?string
+    private function getLastOrderDate(int $supplierId, int $productId, int $storeId): ?string
     {
         $order = Order::where('supplier_id', $supplierId)
+            ->where('store_id', $storeId)
             ->whereHas('items', function ($query) use ($productId) {
                 $query->where('product_id', $productId);
             })

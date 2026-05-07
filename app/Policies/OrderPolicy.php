@@ -12,8 +12,9 @@ class OrderPolicy
      */
     public function viewAny(User $user): bool
     {
-        // Admin, Chef, Directeur, Magasinier, Comptable peuvent voir les commandes
-        return $user->isAdmin() || $user->isChef() || $user->isDirector() || $user->isStorekeeper() || $user->isAccountant();
+        // Tous les utilisateurs authentifiés de l'établissement peuvent consulter la liste.
+        // Le filtrage par établissement est déjà appliqué dans le contrôleur.
+        return !$user->isSuperAdmin();
     }
 
     /**

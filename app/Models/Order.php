@@ -19,6 +19,10 @@ class Order extends Model
         'delivery_date',
         'total_amount',
         'notes',
+        'supplier_token',
+        'supplier_token_expires_at',
+        'supplier_responded_at',
+        'supplier_response_note',
     ];
 
     protected $casts = [
@@ -26,6 +30,8 @@ class Order extends Model
         'expected_delivery_date' => 'date',
         'delivery_date' => 'date',
         'total_amount' => 'decimal:2',
+        'supplier_token_expires_at' => 'datetime',
+        'supplier_responded_at' => 'datetime',
     ];
 
     public function supplier(): BelongsTo
