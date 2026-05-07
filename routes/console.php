@@ -29,10 +29,10 @@ Schedule::call(function () {
 })->weeklyOn(0, '02:00')
   ->description('Nettoie les anciennes alertes lues (plus de 30 jours)');
 
-// Vérifier les limites d'heures supplémentaires toutes les 30 minutes
+// Vérifier les limites d'heures supplémentaires toutes les minutes
 Schedule::command('time-entries:check-overtime')
-    ->everyThirtyMinutes()
-    ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte (toutes les 30 minutes)');
+    ->everyMinute()
+    ->description('Vérifie les pointages en cours et pointe automatiquement si la limite d\'heures sup est atteinte (toutes les minutes)');
 
 // Vérifier les super tâches hebdomadaires chaque lundi à 8h00
 Schedule::command('super-tasks:check-weekly')
