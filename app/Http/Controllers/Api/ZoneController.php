@@ -30,8 +30,11 @@ class ZoneController extends Controller
             $query->whereRaw('1 = 0');
         }
         
-        // Si l'utilisateur n'est pas admin, afficher seulement les zones actives
-        if (!$user->isAdmin()) {
+        $allowedRoles = ['admin', 'director', 'chef'];
+        $canManageZones = in_array($user->role, $allowedRoles, true);
+
+        // Si l'utilisateur ne peut pas gérer les zones, afficher seulement les zones actives
+        if (!$canManageZones) {
             $query->where('is_active', true);
         }
 
@@ -114,8 +117,11 @@ class ZoneController extends Controller
         
         $zone = $zone->firstOrFail();
         
-        // Si l'utilisateur n'est pas admin, vérifier que la zone est active
-        if (!$user->isAdmin()) {
+        $allowedRoles = ['admin', 'director', 'chef'];
+        $canManageZones = in_array($user->role, $allowedRoles, true);
+
+        // Si l'utilisateur ne peut pas gérer les zones, vérifier que la zone est active
+        if (!$canManageZones) {
             if (!$zone->is_active) {
                 return response()->json([
                     'message' => 'Zone non disponible'
@@ -136,11 +142,11 @@ class ZoneController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seul l'admin peut modifier des zones
-        if (!$user->isAdmin()) {
+        $allowedRoles = ['admin', 'director', 'chef'];
+        if (!in_array($user->role, $allowedRoles, true)) {
             return response()->json([
                 'message' => 'Accès refusé',
-                'error' => 'Seul l\'administrateur peut modifier des zones de stockage'
+                'error' => 'Seuls admin, directeur et chef peuvent modifier des zones de stockage'
             ], 403);
         }
 
@@ -187,11 +193,11 @@ class ZoneController extends Controller
             return response()->json(['message' => 'Non authentifié'], 401);
         }
 
-        // Seul l'admin peut supprimer des zones
-        if (!$user->isAdmin()) {
+        $allowedRoles = ['admin', 'director', 'chef'];
+        if (!in_array($user->role, $allowedRoles, true)) {
             return response()->json([
                 'message' => 'Accès refusé',
-                'error' => 'Seul l\'administrateur peut supprimer des zones de stockage'
+                'error' => 'Seuls admin, directeur et chef peuvent supprimer des zones de stockage'
             ], 403);
         }
 
@@ -208,7 +214,7 @@ class ZoneController extends Controller
         if ($zone->products()->count() > 0) {
             return response()->json([
                 'message' => 'Impossible de supprimer',
-                'error' => 'Cette zone contient des produits. Veuillez d\'abord déplacer ou supprimer les produits.'
+                'error' => 'Cette zone contient des produits stockés. Veuillez supprimer définitivement les produits avant de supprimer cette zone.'
             ], 422);
         }
 
