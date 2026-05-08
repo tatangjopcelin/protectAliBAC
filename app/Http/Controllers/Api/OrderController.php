@@ -13,9 +13,11 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -436,7 +438,7 @@ class OrderController extends Controller
                 'status' => 'pending',
             ]);
 
-            $apiBaseUrl = rtrim((string) config('app.url'), '/');
+            $apiBaseUrl = $this->supplierPublicBaseUrl();
             $confirmUrl = $apiBaseUrl.'/api/supplier-orders/token/'.$token.'/respond/confirmed';
             $rejectUrl = $apiBaseUrl.'/api/supplier-orders/token/'.$token.'/respond/cancelled';
 
@@ -597,15 +599,23 @@ class OrderController extends Controller
                 ]);
 
                 $fileName = 'commande-fournisseur-'.$freshOrder->order_number.'.pdf';
+                $relativePath = 'supplier-pdf-temp/'.Str::uuid()->toString().'.pdf';
+                Storage::disk('local')->put($relativePath, $pdf->output());
 
-                return $pdf->download($fileName);
+                $landingKey = Str::uuid()->toString();
+                Cache::put('supplier_confirmation_pdf:'.$landingKey, [
+                    'path' => $relativePath,
+                    'filename' => $fileName,
+                ], now()->addMinutes(30));
+
+                // PRG + page intermédiaire : les téléchargements PDF directs échouent souvent sur Safari iOS.
+                return redirect()
+                    ->route('supplier-order.confirmation-pdf-landing', ['key' => $landingKey]);
             }
 
-            return response()->view('supplier-orders.response-status', [
-                'status' => 'cancelled',
-                'message' => 'Refus de commande enregistré avec succès.',
-                'reason' => $refusalNote,
-            ]);
+            return redirect()
+                ->route('supplier-order.reject-done')
+                ->with('supplier_reject_reason', $refusalNote);
         }
 
         return response()->json([
@@ -614,5 +624,76 @@ class OrderController extends Controller
                 : 'Commande refusée par le fournisseur.',
             'order' => $freshOrder,
         ]);
+    }
+
+    /**
+     * Page « succès » après confirmation (Safari iOS : lien explicite vers le PDF plutôt qu’une réponse POST directe).
+     */
+    public function supplierConfirmationPdfLanding(Request $request, string $key): \Symfony\Component\HttpFoundation\Response
+    {
+        if (! Cache::has('supplier_confirmation_pdf:'.$key)) {
+            return response()->view('supplier-orders.token-unavailable', [
+                'message' => 'Ce lien a expiré ou le PDF a déjà été récupéré. L’établissement a bien reçu la confirmation.',
+            ], 410);
+        }
+
+        return response()->view('supplier-orders.confirmation-pdf-landing', [
+            'downloadPath' => '/supplier-orders/confirmation-pdf-download/'.$key,
+        ]);
+    }
+
+    public function supplierConfirmationPdfDownload(Request $request, string $key): \Symfony\Component\HttpFoundation\Response|\Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        $payload = Cache::pull('supplier_confirmation_pdf:'.$key);
+        if (! $payload || empty($payload['path']) || empty($payload['filename'])) {
+            return response()->view('supplier-orders.token-unavailable', [
+                'message' => 'Ce lien de téléchargement a expiré ou a déjà été utilisé.',
+            ], 410);
+        }
+
+        $path = $payload['path'];
+        if (! Storage::disk('local')->exists($path)) {
+            return response()->view('supplier-orders.token-unavailable', [
+                'message' => 'Le fichier PDF n’est plus disponible. Contactez l’établissement en cas de besoin.',
+            ], 410);
+        }
+
+        $absolute = Storage::disk('local')->path($path);
+
+        return response()->download($absolute, $payload['filename'], [
+            'Content-Type' => 'application/pdf',
+        ])->deleteFileAfterSend(true);
+    }
+
+    public function supplierRejectDone(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $reason = session('supplier_reject_reason');
+        if ($reason === null) {
+            return response()->view('supplier-orders.token-unavailable', [
+                'message' => 'Cette page n’est plus disponible. Si vous avez refusé la commande, l’établissement a été notifié.',
+            ], 410);
+        }
+
+        return response()->view('supplier-orders.response-status', [
+            'status' => 'cancelled',
+            'message' => 'Refus de commande enregistré avec succès.',
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
+     * Base URL publique des liens fournisseurs (e-mail). Si APP_URL est encore en http hors localhost, on passe en https pour éviter contenu mixte.
+     */
+    protected function supplierPublicBaseUrl(): string
+    {
+        $base = rtrim((string) config('app.url'), '/');
+        if (str_starts_with($base, 'http://')) {
+            $host = parse_url($base, PHP_URL_HOST);
+            if (is_string($host) && $host !== '' && ! in_array($host, ['localhost', '127.0.0.1', '[::1]'], true)) {
+                $base = 'https://'.substr($base, 7);
+            }
+        }
+
+        return $base;
     }
 }

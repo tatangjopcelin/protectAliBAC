@@ -184,9 +184,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/orders/{id}/complete-delivery', [OrderController::class, 'completeDelivery']);
     Route::get('/products/{productId}/compare-prices', [OrderController::class, 'comparePrices']); // Comparer les prix fournisseurs
 });
-Route::get('/supplier-orders/token/{token}', [OrderController::class, 'supplierShowByToken']); // Vue publique fournisseur via token
-Route::get('/supplier-orders/token/{token}/respond/{decision}', [OrderController::class, 'supplierRespondByToken']); // Réponse publique fournisseur via token
-Route::post('/supplier-orders/token/{token}/respond/{decision}', [OrderController::class, 'supplierRespondByToken']); // Réponse fournisseur avec motif via formulaire
+Route::get('/supplier-orders/token/{token}', [OrderController::class, 'supplierShowByToken']); // Vue publique fournisseur via token (JSON)
+// GET/POST formulaires fournisseur (HTML + session + CSRF) : routes dans web.php sous le même préfixe /api/…
 
 // Routes pour l'IA & Recommandations (tous les utilisateurs authentifiés)
 Route::middleware('auth:sanctum')->group(function () {

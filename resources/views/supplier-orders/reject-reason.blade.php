@@ -57,7 +57,7 @@
         <h1>Refuser la commande</h1>
         <p>Le motif de refus est obligatoire. Merci d'indiquer la raison pour informer l'établissement.</p>
 
-        <form method="POST" action="{{ url('/api/supplier-orders/token/'.$token.'/respond/cancelled') }}">
+        <form method="POST" action="/api/supplier-orders/token/{{ $token }}/respond/cancelled">
             @csrf
             <textarea name="note" required placeholder="Exemple : produit indisponible cette semaine, rupture fournisseur..."></textarea>
             <button type="submit">Envoyer le refus</button>

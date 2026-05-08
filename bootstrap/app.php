@@ -19,6 +19,8 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(HandleCors::class);
         $middleware->prepend(\App\Http\Middleware\LogApiRequest::class);
         $middleware->prepend(\App\Http\Middleware\HandlePreflight::class);
+        // Reconnaître HTTPS derrière nginx / Caddy (évite APP_URL en http et URLs générées incorrectes).
+        $middleware->trustProxies(at: '*');
         $middleware->alias([
             'permission' => \App\Http\Middleware\CheckPermission::class,
         ]);

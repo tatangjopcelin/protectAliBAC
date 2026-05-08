@@ -56,9 +56,10 @@
     <div class="wrap">
         <h1>Confirmer la commande</h1>
         <p>En validant, la commande est enregistrée comme confirmée. Vous pouvez ajouter une note optionnelle (précision de livraison, conditionnement…).</p>
-        <p>Après validation, un PDF récapitulatif sera téléchargé.</p>
+        <p>Vous serez redirigé vers une page où vous pourrez <strong>télécharger le PDF</strong> récapitulatif — cela fonctionne mieux sur téléphone que l’envoi direct du fichier.</p>
 
-        <form method="POST" action="{{ url('/api/supplier-orders/token/'.$token.'/respond/confirmed') }}">
+        {{-- Chemin relatif : garde le même schéma (https) que la page ; url() utilisait parfois APP_URL en http → avertissement Chrome « formulaire non sécurisé » --}}
+        <form method="POST" action="/api/supplier-orders/token/{{ $token }}/respond/confirmed">
             @csrf
             <label for="confirmation_note" style="display:block;font-weight:600;margin-bottom:6px;font-size:14px;">Note (optionnelle)</label>
             <textarea id="confirmation_note" name="confirmation_note" placeholder="Exemple : livraison le matin, palette entière attendue…"></textarea>

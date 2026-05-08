@@ -28,5 +28,17 @@ class AppServiceProvider extends ServiceProvider
         Carbon::setLocale('fr');
 
         Store::observe(StoreObserver::class);
+
+        // Redirige / route() en https derrière un reverse-proxy (X-Forwarded-Proto) ou si APP_URL est déjà https.
+        if (! $this->app->runningInConsole()) {
+            try {
+                $req = request();
+                if ($req && ($req->secure() || str_starts_with((string) config('app.url'), 'https://'))) {
+                    \Illuminate\Support\Facades\URL::forceScheme('https');
+                }
+            } catch (\Throwable) {
+                // Pas de requête HTTP (tests, artisan).
+            }
+        }
     }
 }
