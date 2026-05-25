@@ -38,6 +38,7 @@ use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\InternalMessageController;
 use App\Http\Controllers\Api\DemoRequestController;
+use App\Http\Controllers\Api\BadgeController;
 
 // Routes d'authentification (publiques) — protégées contre le brute force
 Route::middleware('throttle:auth')->group(function () {
@@ -46,6 +47,9 @@ Route::middleware('throttle:auth')->group(function () {
 });
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
+
+// Route badges — remplace 8 appels séparés par 1 seule requête (polling 30s)
+Route::middleware(['auth:sanctum', 'throttle:api'])->get('/badges', [BadgeController::class, 'getBadges']);
 
 // Routes pour les tokens push (app mobile)
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
