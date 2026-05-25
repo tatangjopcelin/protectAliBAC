@@ -13,8 +13,8 @@ class GroqService
 
     public function __construct()
     {
-        $this->apiKey = env('GROQ_API_KEY');
-        $this->model = env('GROQ_MODEL', 'llama3-70b-8192');
+        $this->apiKey = config('services.groq.key');
+        $this->model  = config('services.groq.model', 'llama-3.3-70b-versatile');
     }
 
     /**
