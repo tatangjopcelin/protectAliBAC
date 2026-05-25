@@ -39,14 +39,16 @@ use App\Http\Controllers\Api\SupportTicketController;
 use App\Http\Controllers\Api\InternalMessageController;
 use App\Http\Controllers\Api\DemoRequestController;
 
-// Routes d'authentification (publiques)
-Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login', [AuthController::class, 'login']);
+// Routes d'authentification (publiques) — protégées contre le brute force
+Route::middleware('throttle:auth')->group(function () {
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login']);
+});
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 Route::get('/user', [AuthController::class, 'user'])->middleware('auth:sanctum');
 
 // Routes pour les tokens push (app mobile)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::post('/push-tokens', [PushTokenController::class, 'store']);
     Route::post('/push-tokens/send-test', [PushTokenController::class, 'sendTest']);
     Route::post('/web-push/subscribe', [WebPushSubscriptionController::class, 'store']);
@@ -54,7 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour les paramètres de compte
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/account-settings', [AccountSettingsController::class, 'show']);
     Route::put('/account-settings/profile', [AccountSettingsController::class, 'updateProfile']);
     Route::put('/account-settings/avatar', [AccountSettingsController::class, 'updateAvatar']);
@@ -62,7 +64,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Abonnement (carte bancaire uniquement via Stripe Checkout)
-Route::middleware('auth:sanctum')->prefix('subscription')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->prefix('subscription')->group(function () {
     Route::get('/plans', [SubscriptionController::class, 'plans']);
     Route::post('/subscribe', [SubscriptionController::class, 'subscribe']);
     Route::get('/status', [SubscriptionController::class, 'status']);
@@ -71,26 +73,26 @@ Route::middleware('auth:sanctum')->prefix('subscription')->group(function () {
     Route::post('/sync-from-stripe', [SubscriptionController::class, 'syncFromStripe']);
 });
 
-// Routes de vérification d'email
-Route::post('/email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
-Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])->name('verification.resend');
-
-// Routes de réinitialisation de mot de passe
-Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name('password.forgot');
-Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
+// Routes de vérification d'email et mot de passe — protégées contre le spam
+Route::middleware('throttle:auth')->group(function () {
+    Route::post('/email/verify', [AuthController::class, 'verifyEmail'])->name('verification.verify');
+    Route::post('/email/resend', [AuthController::class, 'resendVerificationEmail'])->name('verification.resend');
+    Route::post('/password/forgot', [AuthController::class, 'forgotPassword'])->name('password.forgot');
+    Route::post('/password/reset', [AuthController::class, 'resetPassword'])->name('password.reset');
+});
 Route::post('/demo-requests', [DemoRequestController::class, 'store']); // Demande de demo (public)
 Route::get('/web-push/public-key', [WebPushSubscriptionController::class, 'publicKey']);
 
 // Routes publiques (peut être sécurisées plus tard)
 // Route spécifique AVANT apiResource pour éviter les conflits de routage
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::put('/stores/clock-in-verification-method', [StoreController::class, 'updateClockInVerificationMethod']); // Admin: changer méthode de vérification
 });
 Route::apiResource('stores', StoreController::class);
 Route::apiResource('suppliers', SupplierController::class);
 
 // Routes pour les zones (protégées par authentification pour la sécurité multi-establishment)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/zones', [ZoneController::class, 'index']);
     Route::get('/zones/{id}', [ZoneController::class, 'show']);
     Route::post('/zones/{id}/update-temperature', [ZoneController::class, 'updateTemperature']); // Mettre à jour la température d'une zone
@@ -101,7 +103,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes spéciales pour les produits (AVANT apiResource pour éviter les conflits)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/products/expiring/{days}', [ProductController::class, 'expiring']);
     Route::get('/products/expired', [ProductController::class, 'expired']);
     Route::get('/products/inactive', [ProductController::class, 'inactive']);
@@ -134,7 +136,7 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::apiResource('stock-movements', StockMovementController::class);
 
 // Routes spéciales pour les alertes (AVANT apiResource pour éviter les conflits)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/alerts/unread', [AlertController::class, 'unread']);
     Route::post('/alerts/mark-all-read', [AlertController::class, 'markAllAsRead']);
     Route::post('/alerts/{alert}/read', [AlertController::class, 'markAsRead']);
@@ -142,12 +144,12 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour le Dashboard (protégées)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 });
 
 // Super admin : vue globale des établissements et tickets de support
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/super-admin/stores', [SuperAdminController::class, 'storesOverview']);
     Route::patch('/super-admin/stores/{id}/free-access', [SuperAdminController::class, 'setFreeAccess']);
     Route::get('/super-admin/subscription-balance', [SuperAdminController::class, 'subscriptionBalance']);
@@ -175,7 +177,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour les commandes fournisseurs (auth obligatoire)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/orders/unseen-supplier-responses-count', [OrderController::class, 'unseenSupplierResponsesCount']);
     Route::post('/orders/acknowledge-supplier-responses', [OrderController::class, 'acknowledgeSupplierResponses']);
     Route::apiResource('orders', OrderController::class);
@@ -187,8 +189,8 @@ Route::middleware('auth:sanctum')->group(function () {
 Route::get('/supplier-orders/token/{token}', [OrderController::class, 'supplierShowByToken']); // Vue publique fournisseur via token (JSON)
 // GET/POST formulaires fournisseur (HTML + session + CSRF) : routes dans web.php sous le même préfixe /api/…
 
-// Routes pour l'IA & Recommandations (tous les utilisateurs authentifiés)
-Route::middleware('auth:sanctum')->group(function () {
+// Routes pour l'IA & Recommandations — throttle strict (requêtes coûteuses)
+Route::middleware(['auth:sanctum', 'throttle:ai'])->group(function () {
     Route::get('/ai/test-connection', [AIController::class, 'testConnection']); // Test de connexion Hugging Face
     Route::get('/ai/suggest-recipes', [AIController::class, 'suggestRecipes']); // Suggestions de recettes
     Route::get('/ai/predict-consumption/{productId}', [AIController::class, 'predictConsumption']); // Prédiction de consommation
@@ -202,7 +204,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour les notifications (protégées : l'utilisateur doit être connecté pour voir ses notifications)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread', [NotificationController::class, 'unread']);
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
@@ -212,14 +214,14 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour les préférences de notification
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/notification-preferences', [NotificationPreferenceController::class, 'index']);
     Route::post('/notification-preferences', [NotificationPreferenceController::class, 'store']);
     Route::put('/notification-preferences/{id}', [NotificationPreferenceController::class, 'update']);
 });
 
 // Routes pour la gestion des rôles et permissions
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/roles/permissions', [RoleController::class, 'permissions']);
     Route::get('/roles/{role}/permissions', [RoleController::class, 'rolePermissions']);
     Route::get('/roles/{role}/users', [RoleController::class, 'usersByRole']);
@@ -229,7 +231,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour la gestion des utilisateurs
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::apiResource('users', UserController::class);
     Route::put('/users/{id}/role', [UserController::class, 'updateRole']); // Modifier le rôle (Admin uniquement)
     // Route sans paramètre doit être définie AVANT celle avec paramètre
@@ -240,7 +242,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour la liste d'achats (tous les utilisateurs authentifiés peuvent ajouter)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::apiResource('shopping-list', ShoppingListController::class);
     Route::get('/shopping-list/stats', [ShoppingListController::class, 'stats']); // Statistiques
     Route::post('/shopping-list/{id}/mark-ordered', [ShoppingListController::class, 'markAsOrdered']); // Marquer comme commandé
@@ -253,7 +255,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Routes pour le planning et le pointage
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     // Routes pour les plannings
     Route::get('/schedules/weekly', [ScheduleController::class, 'getWeeklySchedule']); // Planning hebdomadaire
     Route::get('/schedules/monthly', [ScheduleController::class, 'getMonthlySchedule']); // Planning mensuel
