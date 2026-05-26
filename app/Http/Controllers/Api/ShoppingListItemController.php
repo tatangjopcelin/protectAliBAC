@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\NotificationPreference;
 use App\Models\ShoppingListItem;
 use App\Models\User;
 use App\Notifications\ShoppingListItemCreatedNotification;
@@ -296,6 +297,23 @@ class ShoppingListItemController extends Controller
             }
 
             $users = $query->get();
+
+            if ($users->isEmpty()) {
+                return;
+            }
+
+            // Charger les préférences 'shopping_list' pour tous les utilisateurs en une seule requête
+            $userIds = $users->pluck('id')->toArray();
+            $defaultEmail = NotificationPreferenceController::CHANNELS['shopping_list']['email'];
+            $savedPrefs = NotificationPreference::whereIn('user_id', $userIds)
+                ->where('channel', 'shopping_list')
+                ->pluck('email_enabled', 'user_id');
+
+            $users = $users->filter(function ($user) use ($savedPrefs, $defaultEmail) {
+                return $savedPrefs->has($user->id)
+                    ? (bool) $savedPrefs->get($user->id)
+                    : $defaultEmail;
+            });
 
             if ($users->isEmpty()) {
                 return;

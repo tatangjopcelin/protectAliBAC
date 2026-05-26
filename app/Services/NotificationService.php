@@ -108,7 +108,7 @@ class NotificationService
         }
 
         // Notification Email (sauf canaux où un email dédié est déjà envoyé)
-        $skipEmailChannels = ['payroll_report', 'schedule_published', 'expiration', 'expired', 'task_due_today', 'super_task_assigned', 'super_task_missing'];
+        $skipEmailChannels = ['payroll_report', 'schedule_published', 'expiration', 'expired', 'product_expiring', 'product_expired', 'task_due_today', 'super_task_assigned', 'super_task_missing'];
         if ($preference->email_enabled && in_array($type, ['email', 'all']) && !in_array($channel, $skipEmailChannels, true)) {
             $sent = $this->sendEmailNotification($user, $title, $message, $data) || $sent;
         }
@@ -297,42 +297,41 @@ class NotificationService
 
         $users = $query->get();
 
+        // Mapper les types d'alerte aux canaux de préférence utilisateur
+        $prefChannel = match($channel) {
+            'expiration' => 'product_expiring',
+            'expired'    => 'product_expired',
+            default      => $channel,
+        };
+
         foreach ($users as $user) {
             // Pour les alertes de péremption, utiliser une notification Mailable dédiée + push court
             if ($channel === 'expiration' || $channel === 'expired') {
-                try {
-                    $user->notify(new \App\Notifications\ProductExpirationAlertNotification($alert, $product));
-                } catch (\Exception $e) {
-                    \Log::error('Erreur envoi notification email péremption: ' . $e->getMessage());
-                    // En cas d'erreur, fallback sur la méthode standard
-                    $this->sendNotification(
-                        $user,
-                        $channel,
-                        "Alerte: {$product->name}",
-                        $fullMessage,
-                        [
-                            'channel' => $channel,
-                            'product_id' => $product->id,
-                            'alert_id' => $alert->id,
-                            'severity' => $alert->severity,
-                            'zone_id' => $product->zone_id,
-                            'zone_name' => $product->zone?->name,
-                            'expiration_date' => $product->expiration_date?->format('Y-m-d'),
-                        ],
-                        'all' // Toujours envoyer par email pour les alertes de péremption
-                    );
+                // Vérifier les préférences avant d'envoyer l'email dédié
+                $emailPref = NotificationPreference::where('user_id', $user->id)
+                    ->where('channel', $prefChannel)
+                    ->first();
+                $defaultEmail = \App\Http\Controllers\Api\NotificationPreferenceController::CHANNELS[$prefChannel]['email'] ?? false;
+                $emailEnabled = $emailPref ? (bool) $emailPref->email_enabled : $defaultEmail;
+
+                if ($emailEnabled) {
+                    try {
+                        $user->notify(new \App\Notifications\ProductExpirationAlertNotification($alert, $product));
+                    } catch (\Exception $e) {
+                        \Log::error('Erreur envoi notification email péremption: ' . $e->getMessage());
+                    }
                 }
                 // Push + SMS : message court (titre + corps adaptés mobile)
                 $pushTitle = 'Péremption';
                 $pushBody = $this->getShortExpirationPushMessage($product, $channel);
                 $data = [
-                    'channel' => $channel,
+                    'channel' => $prefChannel,
                     'product_id' => (string) $product->id,
                     'alert_id' => (string) $alert->id,
                     'route' => '/tabs/alerts',
                     'screen' => 'alerts',
                 ];
-                $this->sendNotification($user, $channel, $pushTitle, $pushBody, $data, 'all');
+                $this->sendNotification($user, $prefChannel, $pushTitle, $pushBody, $data, 'all');
             } else {
                 // Pour les autres types d'alertes, utiliser la méthode standard
                 $this->sendNotification(

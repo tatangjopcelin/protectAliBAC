@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\NotificationPreference;
 use App\Models\Task;
 use App\Models\User;
 use App\Notifications\TaskCreatedNotification;
@@ -123,7 +124,14 @@ class TaskController extends Controller
                 $created[] = $task;
                 try {
                     if ($assignedUser->email_verified_at) {
-                        $assignedUser->notify(new TaskCreatedNotification($task, $user));
+                        $pref = NotificationPreference::where('user_id', $assignedUser->id)
+                            ->where('channel', 'task_assigned')
+                            ->first();
+                        $defaultEmail = NotificationPreferenceController::CHANNELS['task_assigned']['email'];
+                        $emailEnabled = $pref ? (bool) $pref->email_enabled : $defaultEmail;
+                        if ($emailEnabled) {
+                            $assignedUser->notify(new TaskCreatedNotification($task, $user));
+                        }
                     }
                 } catch (\Exception $e) {
                     \Log::error('Erreur envoi notification tâche créée: ' . $e->getMessage());
@@ -152,7 +160,14 @@ class TaskController extends Controller
 
         try {
             if ($assignedUser->email_verified_at) {
-                $assignedUser->notify(new TaskCreatedNotification($task, $user));
+                $pref = NotificationPreference::where('user_id', $assignedUser->id)
+                    ->where('channel', 'task_assigned')
+                    ->first();
+                $defaultEmail = NotificationPreferenceController::CHANNELS['task_assigned']['email'];
+                $emailEnabled = $pref ? (bool) $pref->email_enabled : $defaultEmail;
+                if ($emailEnabled) {
+                    $assignedUser->notify(new TaskCreatedNotification($task, $user));
+                }
             }
         } catch (\Exception $e) {
             \Log::error('Erreur envoi notification tâche créée: ' . $e->getMessage());

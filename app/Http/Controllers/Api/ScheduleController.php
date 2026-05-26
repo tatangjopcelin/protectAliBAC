@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\NotificationPreference;
 use App\Models\Schedule;
 use App\Models\User;
 use App\Notifications\SchedulePublishedNotification;
@@ -637,13 +638,21 @@ class ScheduleController extends Controller
                     continue;
                 }
 
-                // Envoyer la notification par email
-                $employee->notify(new SchedulePublishedNotification(
-                    $userSchedules,
-                    $weekStart->format('Y-m-d'),
-                    $weekEnd->format('Y-m-d'),
-                    $user
-                ));
+                // Vérifier les préférences de notification avant d'envoyer l'email
+                $pref = NotificationPreference::where('user_id', $employee->id)
+                    ->where('channel', 'schedule_published')
+                    ->first();
+                $defaultEmail = NotificationPreferenceController::CHANNELS['schedule_published']['email'];
+                $emailEnabled = $pref ? (bool) $pref->email_enabled : $defaultEmail;
+
+                if ($emailEnabled) {
+                    $employee->notify(new SchedulePublishedNotification(
+                        $userSchedules,
+                        $weekStart->format('Y-m-d'),
+                        $weekEnd->format('Y-m-d'),
+                        $user
+                    ));
+                }
 
                 // Push + SMS : planning publié (email déjà envoyé via SchedulePublishedNotification ci-dessus)
                 app(NotificationService::class)->sendNotification(
