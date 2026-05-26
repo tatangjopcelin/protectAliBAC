@@ -181,8 +181,7 @@ class UserController extends Controller
                 $limits = SubscriptionPlan::getLimitsBySlug('pro');
                 $maxUsers = $limits['max_users'] ?? null;
             } elseif ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
-                $limits = SubscriptionPlan::getLimitsBySlug('gratuit');
-                $maxUsers = $limits['max_users'] ?? null;
+                $maxUsers = 5;
             } else {
                 return response()->json([
                     'message' => 'Période d\'essai terminée. Abonnez-vous pour continuer à ajouter des utilisateurs.',

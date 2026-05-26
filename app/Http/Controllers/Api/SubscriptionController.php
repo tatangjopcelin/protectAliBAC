@@ -153,10 +153,10 @@ class SubscriptionController extends Controller
                 $data['ends_at'] = null;
             } elseif ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
                 $data['subscribed'] = true;
-                $data['plan_name'] = 'Gratuit';
-                $data['plan_slug'] = 'gratuit';
-                $data['limits'] = SubscriptionPlan::getLimitsBySlug('gratuit');
-                $data['pro_features_allowed'] = SubscriptionPlan::hasProFeatures('gratuit');
+                $data['plan_name'] = 'Essai gratuit';
+                $data['plan_slug'] = 'pro';
+                $data['limits'] = ['max_users' => 5];
+                $data['pro_features_allowed'] = true;
                 $data['starts_at'] = $store->created_at?->toIso8601String();
                 $data['ends_at'] = $store->trial_ends_at->toIso8601String();
             }
