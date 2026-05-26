@@ -44,7 +44,7 @@ class ProductUpdatedNotification extends Notification
         $categoryName = $this->product->category ? $this->product->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('Produit modifié - Table du Boucher')
+            ->subject('Produit modifié - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->updater->name . ' a modifié le produit "' . $this->product->name . '".')
             ->line('**Détails du produit :**')

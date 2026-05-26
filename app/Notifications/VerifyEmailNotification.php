@@ -39,9 +39,9 @@ class VerifyEmailNotification extends Notification
         $verificationCode = $notifiable->email_verification_code;
 
         return (new MailMessage)
-            ->subject('Code de vérification - Table du Boucher')
+            ->subject('Code de vérification - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
-            ->line('Merci de vous être inscrit sur Table du Boucher.')
+            ->line('Merci de vous être inscrit sur ' . config('app.name') . '.')
             ->line('Votre code de vérification est :')
             ->line('**' . $verificationCode . '**')
             ->line('Entrez ce code dans l\'application pour vérifier votre adresse email et activer votre compte.')

@@ -51,7 +51,7 @@ class ShoppingListItemCreatedNotification extends Notification
         $categoryName = $this->item->category ? $this->item->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('Nouvel item ajouté à la liste de courses - Table du Boucher')
+            ->subject('Nouvel item ajouté à la liste de courses - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->creator->name . ' a ajouté un nouvel item à la liste de courses.')
             ->line('**Détails de l\'item :**')

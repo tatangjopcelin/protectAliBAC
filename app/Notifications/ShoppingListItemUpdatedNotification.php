@@ -58,7 +58,7 @@ class ShoppingListItemUpdatedNotification extends Notification
         $categoryName = $this->item->category ? $this->item->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('Item de liste de courses modifié - Table du Boucher')
+            ->subject('Item de liste de courses modifié - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->updater->name . ' a modifié l\'item "' . $this->item->name . '" de la liste de courses.')
             ->line('**Détails de l\'item :**')

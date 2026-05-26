@@ -73,7 +73,7 @@ class ProductExpirationAlertNotification extends Notification
         }
         
         $mail = (new MailMessage)
-            ->subject($urgencyIcon . ' Alerte péremption - ' . $this->product->name . ' - Table du Boucher')
+            ->subject($urgencyIcon . ' Alerte péremption - ' . $this->product->name . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line('**' . $urgencyLevel . '**')
             ->line($this->alert->message);

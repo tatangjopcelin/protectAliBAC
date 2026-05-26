@@ -50,7 +50,7 @@ class ProductStockAddedNotification extends Notification
         $categoryName = $this->product->category ? $this->product->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('Stock ajouté - ' . $this->product->name . ' - Table du Boucher')
+            ->subject('Stock ajouté - ' . $this->product->name . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->user->name . ' a ajouté du stock au produit "' . $this->product->name . '".')
             ->line('**Détails de la modification :**')

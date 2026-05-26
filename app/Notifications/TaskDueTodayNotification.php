@@ -31,7 +31,7 @@ class TaskDueTodayNotification extends Notification
         $priority = $priorityLabels[$this->task->priority] ?? $this->task->priority;
 
         $mail = (new MailMessage)
-            ->subject('Tâche à effectuer aujourd\'hui - Table du Boucher')
+            ->subject('Tâche à effectuer aujourd\'hui - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line('Une tâche vous est assignée pour **aujourd\'hui**.')
             ->line('**' . $this->task->title . '**')

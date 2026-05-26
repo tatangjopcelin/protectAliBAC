@@ -58,7 +58,7 @@ class ResetPasswordNotification extends Notification
         $url = "{$frontendUrl}/reset-password?token={$this->token}&email=" . urlencode($notifiable->email);
 
         return (new MailMessage)
-            ->subject('Réinitialisation de votre mot de passe - Table du Boucher')
+            ->subject('Réinitialisation de votre mot de passe - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line('Vous recevez cet email car nous avons reçu une demande de réinitialisation de mot de passe pour votre compte.')
             ->action('Réinitialiser le mot de passe', $url)

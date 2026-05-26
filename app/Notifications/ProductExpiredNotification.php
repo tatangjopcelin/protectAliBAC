@@ -46,7 +46,7 @@ class ProductExpiredNotification extends Notification
         $categoryName = $this->product->category ? $this->product->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('⚠️ Produit périmé - ' . $this->product->name . ' - Table du Boucher')
+            ->subject('⚠️ Produit périmé - ' . $this->product->name . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->user->name . ' a marqué le produit "' . $this->product->name . '" comme périmé.')
             ->line('**Détails :**')

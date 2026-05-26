@@ -39,7 +39,7 @@ class EstablishmentCodeNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Code d\'établissement - Table du Boucher')
+            ->subject('Code d\'établissement - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line('Votre établissement "' . $this->storeName . '" a été créé avec succès.')
             ->line('Votre code d\'établissement est :')

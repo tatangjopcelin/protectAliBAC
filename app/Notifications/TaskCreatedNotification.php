@@ -58,7 +58,7 @@ class TaskCreatedNotification extends Notification
         $status = $statusLabels[$this->task->status] ?? $this->task->status;
         
         $mail = (new MailMessage)
-            ->subject('Nouvelle tâche assignée - Table du Boucher')
+            ->subject('Nouvelle tâche assignée - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->creator->name . ' vous a assigné une nouvelle tâche.')
             ->line('**Détails de la tâche :**')

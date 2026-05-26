@@ -42,7 +42,7 @@ class ProductsExpiredBulkNotification extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('⚠️ Traitement en masse des produits périmés - Table du Boucher')
+            ->subject('⚠️ Traitement en masse des produits périmés - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->user->name . ' a effectué un traitement en masse des produits périmés.')
             ->line('**Résumé du traitement :**')

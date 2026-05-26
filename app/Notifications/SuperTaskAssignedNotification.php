@@ -50,7 +50,7 @@ class SuperTaskAssignedNotification extends Notification
         $weekEnd = \Carbon\Carbon::parse($this->superTask->week_start_date)->endOfWeek()->format('d/m/Y');
         
         $mail = (new MailMessage)
-            ->subject('Super tâche assignée - ' . $type . ' - Table du Boucher')
+            ->subject('Super tâche assignée - ' . $type . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->creator->name . ' vous a assigné une super tâche importante pour cette semaine.')
             ->line('**Détails de la super tâche :**')

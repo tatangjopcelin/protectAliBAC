@@ -44,7 +44,7 @@ class ProductDeletedNotification extends Notification
         $categoryName = $this->product->category ? $this->product->category->name : 'Non spécifiée';
         
         return (new MailMessage)
-            ->subject('🗑️ Produit désactivé - ' . $this->product->name . ' - Table du Boucher')
+            ->subject('🗑️ Produit désactivé - ' . $this->product->name . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->user->name . ' a désactivé le produit "' . $this->product->name . '".')
             ->line('**Détails du produit désactivé :**')

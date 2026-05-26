@@ -62,7 +62,7 @@ class ProductStockReducedNotification extends Notification
         $typeLabel = $typeLabels[$this->movementType] ?? $this->movementType ?? 'Réduction';
         
         $mail = (new MailMessage)
-            ->subject('Stock réduit - ' . $this->product->name . ' - Table du Boucher')
+            ->subject('Stock réduit - ' . $this->product->name . ' - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->user->name . ' a réduit le stock du produit "' . $this->product->name . '".')
             ->line('**Détails de la modification :**')

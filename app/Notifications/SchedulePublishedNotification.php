@@ -204,7 +204,7 @@ class SchedulePublishedNotification extends Notification
             : "{$remainingMinutes}min";
         
         return (new MailMessage)
-            ->subject('Votre planning de la semaine - Table du Boucher')
+            ->subject('Votre planning de la semaine - ' . config('app.name'))
             ->view('emails.schedule-published', [
                 'notifiable' => $notifiable,
                 'weekStartFormatted' => $weekStartFormatted,

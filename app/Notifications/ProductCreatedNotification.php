@@ -46,7 +46,7 @@ class ProductCreatedNotification extends Notification
         $categoryName = $this->product->category ? $this->product->category->name : 'Non spécifiée';
 
         $mail = (new MailMessage)
-            ->subject('Nouveau produit créé - Table du Boucher')
+            ->subject('Nouveau produit créé - ' . config('app.name'))
             ->greeting('Bonjour ' . $notifiable->name . ' !')
             ->line($this->creator->name . ' a créé un nouveau produit.')
             ->line('**Détails du produit :**')
