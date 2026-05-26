@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\NotificationPreference;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\User;
@@ -274,7 +275,7 @@ class ProductController extends Controller
         $this->alertService->checkProduct($product);
 
         // Envoyer une notification par email à tous les autres utilisateurs
-        $this->notifyAllUsersExcept($user, new ProductCreatedNotification($product, $user));
+        $this->notifyAllUsersExcept($user, new ProductCreatedNotification($product, $user), 'product_created');
 
         // Enregistrer la création dans la traçabilité avec toutes les informations d'origine
         $traceMetadata = [
@@ -458,7 +459,7 @@ class ProductController extends Controller
         $this->alertService->checkProduct($product);
 
         // Envoyer une notification par email à tous les autres utilisateurs
-        $this->notifyAllUsersExcept($user, new ProductUpdatedNotification($product, $user));
+        $this->notifyAllUsersExcept($user, new ProductUpdatedNotification($product, $user), 'product_updated');
 
         // Enregistrer la modification dans la traçabilité
         $this->recordTrace($product->id, 'updated', $request->user()?->id, [
@@ -503,7 +504,7 @@ class ProductController extends Controller
 
         // Envoyer une notification par email à tous les autres utilisateurs
         if ($user) {
-            $this->notifyAllUsersExcept($user, new ProductDeletedNotification($product, $user));
+            $this->notifyAllUsersExcept($user, new ProductDeletedNotification($product, $user), 'product_deleted');
         }
 
         return response()->json(['message' => 'Produit désactivé'], 200);
@@ -789,7 +790,7 @@ class ProductController extends Controller
 
             // Envoyer une notification par email à tous les autres utilisateurs
             if ($request->user()) {
-                $this->notifyAllUsersExcept($request->user(), new ProductExpiredNotification($product, $request->user(), $quantityToRemove));
+                $this->notifyAllUsersExcept($request->user(), new ProductExpiredNotification($product, $request->user(), $quantityToRemove), 'product_expired');
             }
 
             return response()->json([
@@ -926,7 +927,7 @@ class ProductController extends Controller
 
             // Envoyer une notification par email à tous les autres utilisateurs
             if ($request->user()) {
-                $this->notifyAllUsersExcept($request->user(), new ProductStockAddedNotification($product, $request->user(), $quantityToAdd, $oldQuantity, $newQuantity));
+                $this->notifyAllUsersExcept($request->user(), new ProductStockAddedNotification($product, $request->user(), $quantityToAdd, $oldQuantity, $newQuantity), 'product_stock');
             }
 
             return response()->json([
@@ -1021,7 +1022,7 @@ class ProductController extends Controller
 
             // Envoyer une notification par email à tous les autres utilisateurs
             if ($request->user()) {
-                $this->notifyAllUsersExcept($request->user(), new ProductStockReducedNotification($product, $request->user(), $quantityToReduce, $oldQuantity, $newQuantity, $reason, $movementType));
+                $this->notifyAllUsersExcept($request->user(), new ProductStockReducedNotification($product, $request->user(), $quantityToReduce, $oldQuantity, $newQuantity, $reason, $movementType), 'product_stock');
             }
 
             return response()->json([
@@ -1165,7 +1166,7 @@ class ProductController extends Controller
 
         // Envoyer une notification par email à tous les autres utilisateurs
         if ($request->user() && $processed > 0) {
-            $this->notifyAllUsersExcept($request->user(), new ProductsExpiredBulkNotification($request->user(), $processed, $expiredProducts->count()));
+            $this->notifyAllUsersExcept($request->user(), new ProductsExpiredBulkNotification($request->user(), $processed, $expiredProducts->count()), 'product_expired');
         }
 
         return response()->json([
@@ -1399,11 +1400,12 @@ class ProductController extends Controller
     /**
      * Notifier tous les utilisateurs sauf celui qui a fait l'action.
      *
-     * Les emails sont envoyés APRÈS que la réponse HTTP a été retournée au client
-     * (dispatch()->afterResponse()), ce qui évite de bloquer la réponse pendant
-     * l'envoi SMTP synchrone (anciennement ~15 s pour 3 utilisateurs).
+     * - $channel : clé du canal de notification (ex. 'product_created').
+     *   Les utilisateurs ayant désactivé ce canal (email_enabled = false) sont exclus.
+     * - Envoi différé via dispatch()->afterResponse() : la réponse HTTP repart
+     *   immédiatement, les emails sont envoyés juste après dans le même processus.
      */
-    private function notifyAllUsersExcept(User $excludedUser, $notification)
+    private function notifyAllUsersExcept(User $excludedUser, $notification, string $channel = '')
     {
         try {
             $query = User::where('id', '!=', $excludedUser->id)
@@ -1419,12 +1421,33 @@ class ProductController extends Controller
                 return;
             }
 
-            $storeId      = $excludedUser->store_id;
-            $excludedId   = $excludedUser->id;
-            $userCount    = $users->count();
+            // Filtrer selon les préférences email du canal
+            if (!empty($channel)) {
+                $defaultEmail = \App\Http\Controllers\Api\NotificationPreferenceController::CHANNELS[$channel]['email'] ?? false;
+                $userIds = $users->pluck('id');
 
-            // Envoi différé : la réponse HTTP repart immédiatement,
-            // Laravel envoie les emails juste après dans le même processus.
+                // Charger toutes les préférences existantes pour ce canal en 1 requête
+                $savedPrefs = NotificationPreference::whereIn('user_id', $userIds)
+                    ->where('channel', $channel)
+                    ->pluck('email_enabled', 'user_id');
+
+                $users = $users->filter(function ($user) use ($savedPrefs, $defaultEmail) {
+                    // Si une préférence est enregistrée → respecter le choix de l'user
+                    // Sinon → appliquer le default du canal
+                    return $savedPrefs->has($user->id)
+                        ? (bool) $savedPrefs->get($user->id)
+                        : $defaultEmail;
+                });
+            }
+
+            if ($users->isEmpty()) {
+                return;
+            }
+
+            $storeId    = $excludedUser->store_id;
+            $excludedId = $excludedUser->id;
+            $userCount  = $users->count();
+
             dispatch(function () use ($users, $notification) {
                 foreach ($users as $user) {
                     try {
@@ -1440,6 +1463,7 @@ class ProductController extends Controller
             })->afterResponse();
 
             \Log::info('Notifications produit planifiées (afterResponse)', [
+                'channel'               => $channel,
                 'excluded_user_id'      => $excludedId,
                 'store_id'              => $storeId,
                 'notified_users_count'  => $userCount,

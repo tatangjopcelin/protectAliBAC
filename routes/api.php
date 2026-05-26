@@ -221,6 +221,7 @@ Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
 Route::middleware(['auth:sanctum', 'throttle:api'])->group(function () {
     Route::get('/notification-preferences', [NotificationPreferenceController::class, 'index']);
     Route::post('/notification-preferences', [NotificationPreferenceController::class, 'store']);
+    Route::post('/notification-preferences/batch', [NotificationPreferenceController::class, 'batchUpsert']);
     Route::put('/notification-preferences/{id}', [NotificationPreferenceController::class, 'update']);
 });
 
