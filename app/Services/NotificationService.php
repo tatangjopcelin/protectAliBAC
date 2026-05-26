@@ -57,30 +57,15 @@ class NotificationService
             ->where('channel', $channel)
             ->first();
 
-        // Si pas de préférence, utiliser les valeurs par défaut
+        // Si pas de préférence, utiliser les valeurs par défaut du canal
         if (!$preference) {
+            $channelDefaults = \App\Http\Controllers\Api\NotificationPreferenceController::CHANNELS[$channel] ?? null;
             $preference = (object)[
-                'push_enabled' => true,
-                'email_enabled' => true,
-                'sms_enabled' => in_array($channel, [
-                    'payroll_report',
-                    'schedule_published',
-                    'expiration',
-                    'expired',
-                    'task_due_today',
-                    'super_task_due_today',
-                    'super_task_assigned',
-                    'super_task_missing',
-                    'task_overdue',
-                    'super_task_overdue',
-                    'support_ticket_new',
-                    'support_ticket_reply',
-                    'super_admin_broadcast',
-                    'super_admin_broadcast_all',
-                    'supplier_order_response',
-                ], true),
+                'push_enabled'    => true,
+                'email_enabled'   => $channelDefaults ? (bool) $channelDefaults['email'] : false,
+                'sms_enabled'     => $channelDefaults ? (bool) $channelDefaults['sms']   : false,
                 'whatsapp_enabled' => false,
-                'severity_level' => 'all'
+                'severity_level'  => 'all',
             ];
         }
 
