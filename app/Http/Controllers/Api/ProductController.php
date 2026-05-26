@@ -1397,42 +1397,55 @@ class ProductController extends Controller
     }
 
     /**
-     * Notifier tous les utilisateurs sauf celui qui a fait l'action
+     * Notifier tous les utilisateurs sauf celui qui a fait l'action.
+     *
+     * Les emails sont envoyés APRÈS que la réponse HTTP a été retournée au client
+     * (dispatch()->afterResponse()), ce qui évite de bloquer la réponse pendant
+     * l'envoi SMTP synchrone (anciennement ~15 s pour 3 utilisateurs).
      */
     private function notifyAllUsersExcept(User $excludedUser, $notification)
     {
         try {
-            // Récupérer tous les utilisateurs du même établissement sauf celui qui a fait l'action
             $query = User::where('id', '!=', $excludedUser->id)
-                ->whereNotNull('email_verified_at'); // Seulement les utilisateurs vérifiés
-            
-            // Filtrer par store_id si l'utilisateur a un store_id
+                ->whereNotNull('email_verified_at');
+
             if ($excludedUser->store_id) {
                 $query->where('store_id', $excludedUser->store_id);
             }
-            
+
             $users = $query->get();
 
-            // Envoyer la notification à chaque utilisateur
-            foreach ($users as $user) {
-                try {
-                    $user->notify($notification);
-                } catch (\Exception $e) {
-                    \Log::error('Erreur envoi notification à utilisateur', [
-                        'user_id' => $user->id,
-                        'user_email' => $user->email,
-                        'error' => $e->getMessage()
-                    ]);
-                }
+            if ($users->isEmpty()) {
+                return;
             }
 
-            \Log::info('Notifications envoyées', [
-                'excluded_user_id' => $excludedUser->id,
-                'store_id' => $excludedUser->store_id,
-                'notified_users_count' => $users->count()
+            $storeId      = $excludedUser->store_id;
+            $excludedId   = $excludedUser->id;
+            $userCount    = $users->count();
+
+            // Envoi différé : la réponse HTTP repart immédiatement,
+            // Laravel envoie les emails juste après dans le même processus.
+            dispatch(function () use ($users, $notification) {
+                foreach ($users as $user) {
+                    try {
+                        $user->notify(clone $notification);
+                    } catch (\Exception $e) {
+                        \Log::error('Erreur envoi notification produit', [
+                            'user_id'    => $user->id,
+                            'user_email' => $user->email,
+                            'error'      => $e->getMessage(),
+                        ]);
+                    }
+                }
+            })->afterResponse();
+
+            \Log::info('Notifications produit planifiées (afterResponse)', [
+                'excluded_user_id'      => $excludedId,
+                'store_id'              => $storeId,
+                'notified_users_count'  => $userCount,
             ]);
         } catch (\Exception $e) {
-            \Log::error('Erreur lors de l\'envoi des notifications: ' . $e->getMessage());
+            \Log::error('Erreur notifyAllUsersExcept: ' . $e->getMessage());
         }
     }
 }
