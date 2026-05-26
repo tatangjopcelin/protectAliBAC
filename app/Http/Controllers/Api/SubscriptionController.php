@@ -154,7 +154,7 @@ class SubscriptionController extends Controller
             } elseif ($store && $store->trial_ends_at && $store->trial_ends_at->isFuture()) {
                 $data['subscribed'] = true;
                 $data['plan_name'] = 'Essai gratuit';
-                $data['plan_slug'] = 'pro';
+                $data['plan_slug'] = 'gratuit';
                 $data['limits'] = ['max_users' => 5];
                 $data['pro_features_allowed'] = true;
                 $data['starts_at'] = $store->created_at?->toIso8601String();
