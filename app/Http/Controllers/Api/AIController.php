@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\AISuggestion;
 use App\Models\AiConversation;
+use App\Models\Product;
 use App\Services\AIService;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class AIController extends Controller
 {
@@ -242,6 +244,69 @@ class AIController extends Controller
         }
     }
 
+    private function today(): string
+    {
+        return Carbon::now()->format('d/m/Y');
+    }
+
+    /**
+     * Construit un résumé textuel de l'état du stock (ruptures, produits bientôt périmés)
+     * pour donner à l'IA une vue réelle sur le stock de l'établissement pendant le chat.
+     */
+    private function buildStockContext(int $storeId): string
+    {
+        $products = Product::where('is_active', true)
+            ->whereHas('zone', function ($q) use ($storeId) {
+                $q->where('store_id', $storeId);
+            })
+            ->with(['category'])
+            ->get();
+
+        if ($products->isEmpty()) {
+            return "Aucun produit enregistré dans le stock pour le moment.";
+        }
+
+        $now = Carbon::now();
+        $totalCount = $products->count();
+
+        $lowStock = $products->filter(function ($p) {
+            return $p->min_quantity !== null && (float) $p->quantity <= (float) $p->min_quantity;
+        });
+
+        $expiringSoon = $products->filter(function ($p) use ($now) {
+            return $p->expiration_date && Carbon::parse($p->expiration_date)->lte($now->copy()->addDays(5));
+        })->sortBy('expiration_date');
+
+        $lines = [];
+        $lines[] = "Nombre total de produits actifs en stock: {$totalCount}.";
+
+        if ($lowStock->isNotEmpty()) {
+            $lines[] = "Produits en rupture ou sous le seuil minimum (" . $lowStock->count() . "):";
+            foreach ($lowStock->take(30) as $p) {
+                $qty = rtrim(rtrim(number_format((float) $p->quantity, 2, '.', ''), '0'), '.');
+                $min = rtrim(rtrim(number_format((float) $p->min_quantity, 2, '.', ''), '0'), '.');
+                $lines[] = "- {$p->name}: {$qty} {$p->unit} (seuil min: {$min} {$p->unit})" . ($p->category ? " [{$p->category->name}]" : '');
+            }
+        } else {
+            $lines[] = "Aucun produit en rupture de stock actuellement.";
+        }
+
+        if ($expiringSoon->isNotEmpty()) {
+            $lines[] = "Produits périmés ou expirant dans les 5 prochains jours (" . $expiringSoon->count() . "):";
+            foreach ($expiringSoon->take(30) as $p) {
+                $expDate = Carbon::parse($p->expiration_date);
+                $daysLeft = $now->startOfDay()->diffInDays($expDate->copy()->startOfDay(), false);
+                $qty = rtrim(rtrim(number_format((float) $p->quantity, 2, '.', ''), '0'), '.');
+                $statusLabel = $daysLeft < 0 ? 'DÉJÀ PÉRIMÉ' : "expire dans {$daysLeft} jour(s)";
+                $lines[] = "- {$p->name}: {$qty} {$p->unit}, {$statusLabel} ({$expDate->format('d/m/Y')})";
+            }
+        } else {
+            $lines[] = "Aucun produit n'expire dans les 5 prochains jours.";
+        }
+
+        return implode("\n", $lines);
+    }
+
     /**
      * Chat direct avec l'IA (conversation libre)
      */
@@ -285,6 +350,7 @@ class AIController extends Controller
             $storeName = $user->store?->name ?? 'N/A';
             $userName = $user->name ?? 'N/A';
             $userRole = $user->role ?? 'N/A';
+            $stockContext = $user->store_id ? $this->buildStockContext((int) $user->store_id) : "Aucun établissement associé à cet utilisateur.";
 
         $systemPrompt = "Tu es un assistant IA utile et précis pour gérer un établissement dans le domaine de la restauration.\n"
             . "Réponds en FRANCAIS.\n"
@@ -292,6 +358,9 @@ class AIController extends Controller
             . "Hors périmètre: tout sujet sans lien direct avec la restauration/management/gestion d’entreprise (ex: sport, politique, santé personnelle, programmation, divertissement, etc.).\n"
             . "Si la question est hors périmètre, réponds poliment que tu es conçu uniquement pour aider sur la restauration/management/gestion d'établissement, puis propose de reformuler la question dans ce cadre.\n"
             . "Le contexte utilisateur: nom={$userName}, role={$userRole}, store={$storeName}.\n"
+            . "Voici l'état actuel du stock de l'établissement (données réelles, à la date du {$this->today()}) :\n"
+            . "{$stockContext}\n"
+            . "Utilise ces données de stock quand c'est pertinent : signale les produits en rupture ou bientôt périmés, propose des solutions concrètes (recette pour écouler un produit qui expire, commande à passer, etc.), et base tes suggestions de recettes ou de commandes sur ce qui est réellement disponible.\n"
             . "Si l'utilisateur demande des recommandations opérationnelles, propose des étapes concrètes.\n"
             . "Si l'utilisateur manque d'informations, pose une ou deux questions de clarification avant de conclure.\n";
 
